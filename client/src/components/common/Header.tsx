@@ -9,7 +9,7 @@ export const Header: React.FC = () => {
   const { 
     stats, soundEnabled, toggleSound, isLockdownMode, 
     toggleLockdown, triggerUnknownPersonPrompt, isConnected,
-    simulateAlert
+    simulateAlert, setIsConnectCamModalOpen
   } = useSecurity();
 
   const [currentTime, setCurrentTime] = useState<string>('');
@@ -121,13 +121,22 @@ export const Header: React.FC = () => {
           )}
         </div>
 
+        {/* Connect Real Camera Button */}
+        <button
+          onClick={() => setIsConnectCamModalOpen(true)}
+          className="px-3 py-1.5 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-md shadow-indigo-600/20 transition-all"
+        >
+          <Radio className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Connect Camera</span>
+        </button>
+
         {/* Enroll Button */}
         <button
           onClick={triggerUnknownPersonPrompt}
           className="px-3 py-1.5 rounded-lg bg-sky-600/90 hover:bg-sky-500 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-md shadow-sky-600/20 transition-all"
         >
           <UserPlus className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Enroll Visitor / Staff</span>
+          <span className="hidden sm:inline">Enroll Visitor</span>
         </button>
 
         {/* Sound Toggle */}

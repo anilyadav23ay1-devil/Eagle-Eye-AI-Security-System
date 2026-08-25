@@ -1,34 +1,38 @@
 import asyncio
+import cv2
 from contextlib import asynccontextmanager
 from typing import List, Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from models.schemas import (
     Person, AppearanceSnapshot, MovementEvent, Camera,
     RoomZone, SecurityAlert, SecurityRule, PersonEnrollmentRequest,
-    BuildingStats, AlertStatus, AlertType
+    BuildingStats, AlertStatus, AlertType, CameraConnectRequest, CameraTestRequest
 )
 from services.simulation_engine import engine
+from services.camera_streamer import camera_streamer
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: launch simulation background task
     sim_task = asyncio.create_task(engine.simulation_loop())
     yield
-    # Shutdown: stop simulation
+    # Shutdown: stop simulation and camera streams
     engine.is_running = False
+    for cam in engine.cameras:
+        camera_streamer.stop_camera(cam.camera_id)
     sim_task.cancel()
 
 app = FastAPI(
     title="Eagle Eye - AI Security & Activity Intelligence Platform API",
-    description="Real-time multi-camera tracking, authorization, and situational intelligence backend.",
-    version="1.0.0",
+    description="Real-time multi-camera tracking, universal IP camera ingestion, and situational intelligence backend.",
+    version="1.1.0",
     lifespan=lifespan
 )
 
-# Enable CORS for frontend Vite dev server
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -44,7 +48,6 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            # Can process incoming client commands here if needed
     except WebSocketDisconnect:
         engine.disconnect(websocket)
     except Exception:
@@ -54,7 +57,12 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "system": "Eagle Eye Security Platform", "version": "1.0.0"}
+    return {
+        "status": "ok",
+        "system": "Eagle Eye Security Platform",
+        "version": "1.1.0",
+        "real_camera_support": ["RTSP", "ONVIF", "HTTP/MJPEG", "USB_Webcam", "Hikvision", "Dahua", "Axis", "CP Plus", "Reolink"]
+    }
 
 @app.get("/api/stats", response_model=BuildingStats)
 def get_building_stats():
@@ -96,9 +104,91 @@ def get_person_timeline(person_id: str):
         return engine.timelines[person_id]
     return []
 
+# --- Real Camera Connection & Stream Management ---
+
 @app.get("/api/cameras", response_model=List[Camera])
 def list_cameras():
     return engine.cameras
+
+@app.post("/api/cameras/test-connection")
+def test_camera_connection(request: CameraTestRequest):
+    """Test connection to a camera IP / RTSP URL / USB device before adding."""
+    result = engine.test_camera_connection(request)
+    return result
+
+@app.post("/api/cameras/connect", response_model=Camera)
+async def connect_camera(request: CameraConnectRequest):
+    """Register and connect a new or existing real camera (Hikvision, Dahua, Axis, CP Plus, RTSP, USB Webcam)."""
+    camera = engine.add_or_connect_camera(request)
+    await engine.broadcast({
+        "type": "CAMERA_CONNECTED",
+        "data": camera.model_dump()
+    })
+    return camera
+
+@app.post("/api/cameras/{camera_id}/disconnect", response_model=Camera)
+async def disconnect_camera(camera_id: str):
+    """Disconnect and stop streaming from a camera."""
+    try:
+        cam = engine.disconnect_camera(camera_id)
+        await engine.broadcast({
+            "type": "CAMERA_DISCONNECTED",
+            "data": cam.model_dump()
+        })
+        return cam
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+@app.post("/api/cameras/{camera_id}/reconnect", response_model=Camera)
+async def reconnect_camera(camera_id: str):
+    """Reconnect a previously disconnected camera."""
+    try:
+        cam = engine.reconnect_camera(camera_id)
+        await engine.broadcast({
+            "type": "CAMERA_RECONNECTED",
+            "data": cam.model_dump()
+        })
+        return cam
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+@app.delete("/api/cameras/{camera_id}")
+async def delete_camera(camera_id: str):
+    """Remove a camera node and release its resources."""
+    try:
+        engine.delete_camera(camera_id)
+        await engine.broadcast({
+            "type": "CAMERA_DELETED",
+            "data": {"camera_id": camera_id}
+        })
+        return {"success": True, "message": f"Camera {camera_id} removed"}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+@app.get("/api/cameras/{camera_id}/live-feed")
+def get_camera_live_feed(camera_id: str):
+    """Stream live optical video frames in MJPEG multipart format."""
+    camera = next((c for c in engine.cameras if c.camera_id == camera_id or c.id == camera_id), None)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    return StreamingResponse(
+        camera_streamer.get_mjpeg_stream(camera),
+        media_type="multipart/x-mixed-replace; boundary=frame"
+    )
+
+@app.get("/api/cameras/{camera_id}/snapshot")
+def get_camera_snapshot(camera_id: str):
+    """Capture a single JPEG snapshot from camera."""
+    camera = next((c for c in engine.cameras if c.camera_id == camera_id or c.id == camera_id), None)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    frame = camera_streamer.get_camera_frame(camera)
+    ret, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    if ret:
+        return Response(content=jpeg.tobytes(), media_type="image/jpeg")
+    raise HTTPException(status_code=500, detail="Snapshot capture failed")
 
 @app.get("/api/rooms", response_model=List[RoomZone])
 def list_rooms():

@@ -14,6 +14,24 @@ export type AlertType =
 
 export type AlertStatus = 'Active' | 'Investigating' | 'Resolved' | 'False Alarm';
 
+export type CameraBrand = 
+  | 'Hikvision'
+  | 'Dahua'
+  | 'Axis'
+  | 'CP Plus'
+  | 'Reolink'
+  | 'Hanwha / Samsung'
+  | 'Uniview'
+  | 'Amcrest'
+  | 'Generic RTSP'
+  | 'Mobile IP Cam (DroidCam/IP Webcam)'
+  | 'Local USB / Built-in Webcam'
+  | 'Simulated Optical Node';
+
+export type StreamType = 'RTSP' | 'HTTP/MJPEG' | 'ONVIF' | 'USB Local' | 'Simulated';
+
+export type ConnectionStatus = 'Connected' | 'Connecting' | 'Disconnected' | 'Error';
+
 export interface AppearanceSnapshot {
   id: string;
   person_id: string;
@@ -73,6 +91,19 @@ export interface Camera {
   floor: string;
   room: string;
   status: 'Online' | 'Degraded' | 'Offline';
+  connection_status: ConnectionStatus;
+  brand: CameraBrand;
+  stream_type: StreamType;
+  stream_url?: string;
+  ip_address?: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  channel?: number;
+  device_index?: number;
+  is_real_camera: boolean;
+  last_connected_at?: string;
+  last_error?: string;
   fps: number;
   resolution: string;
   latency_ms: number;
@@ -80,6 +111,38 @@ export interface Camera {
   fov_angle: number;
   x_pos: number;
   y_pos: number;
+}
+
+export interface CameraConnectPayload {
+  camera_id?: string;
+  name: string;
+  building: string;
+  floor: string;
+  room: string;
+  brand: CameraBrand;
+  stream_type: StreamType;
+  stream_url?: string;
+  ip_address?: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  channel?: number;
+  device_index?: number;
+  ai_models: string[];
+  x_pos?: number;
+  y_pos?: number;
+}
+
+export interface CameraTestPayload {
+  brand: CameraBrand;
+  stream_type: StreamType;
+  stream_url?: string;
+  ip_address?: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  channel?: number;
+  device_index?: number;
 }
 
 export interface RoomZone {

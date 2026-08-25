@@ -8,8 +8,10 @@ from fastapi import WebSocket
 from models.schemas import (
     Person, AppearanceSnapshot, MovementEvent, Camera, 
     RoomZone, SecurityAlert, SecurityRule, PersonEnrollmentRequest,
-    BuildingStats, AccessStatus, AlertSeverity, AlertType, AlertStatus, PersonRole
+    BuildingStats, AccessStatus, AlertSeverity, AlertType, AlertStatus, PersonRole,
+    CameraConnectRequest, CameraTestRequest, CameraBrand, StreamType, ConnectionStatus
 )
+from services.camera_streamer import camera_streamer
 from seed_data.initial_state import (
     INITIAL_PERSONS, INITIAL_APPEARANCES, INITIAL_TIMELINES,
     INITIAL_ROOMS_FLOOR2, INITIAL_CAMERAS, INITIAL_ALERTS, INITIAL_RULES
@@ -182,6 +184,102 @@ class SimulationEngine:
         )
         self.alerts.insert(0, new_alert)
         return new_alert
+
+    def test_camera_connection(self, req: CameraTestRequest) -> dict:
+        return camera_streamer.test_connection(req)
+
+    def add_or_connect_camera(self, req: CameraConnectRequest) -> Camera:
+        cam_id = req.camera_id or f"CAM-{len(self.cameras) + 1:03d}"
+        
+        # Check if camera already exists
+        existing = next((c for c in self.cameras if c.camera_id == cam_id), None)
+        if existing:
+            existing.name = req.name
+            existing.building = req.building
+            existing.floor = req.floor
+            existing.room = req.room
+            existing.brand = req.brand
+            existing.stream_type = req.stream_type
+            existing.stream_url = req.stream_url
+            existing.ip_address = req.ip_address
+            existing.port = req.port
+            existing.username = req.username
+            existing.password = req.password
+            existing.channel = req.channel
+            existing.device_index = req.device_index
+            existing.ai_models = req.ai_models
+            existing.is_real_camera = req.stream_type != StreamType.SIMULATED
+            existing.connection_status = ConnectionStatus.CONNECTING
+            camera_streamer.start_camera(existing)
+            return existing
+
+        resolved_url = req.stream_url or str(camera_streamer.build_stream_url(req))
+        is_real = req.stream_type != StreamType.SIMULATED
+
+        new_cam = Camera(
+            id=f"cam-{len(self.cameras)+1}",
+            camera_id=cam_id,
+            name=req.name,
+            building=req.building,
+            floor=req.floor,
+            room=req.room,
+            status="Online",
+            connection_status=ConnectionStatus.CONNECTED if is_real else ConnectionStatus.CONNECTED,
+            brand=req.brand,
+            stream_type=req.stream_type,
+            stream_url=resolved_url,
+            ip_address=req.ip_address,
+            port=req.port,
+            username=req.username,
+            password=req.password,
+            channel=req.channel,
+            device_index=req.device_index,
+            is_real_camera=is_real,
+            last_connected_at=datetime.now().strftime("%Y-%m-%d %I:%M:%S %p"),
+            fps=30,
+            resolution="1080p Full HD" if is_real else "4K UHD (3840x2160)",
+            latency_ms=18,
+            ai_models=req.ai_models,
+            fov_angle=90,
+            x_pos=req.x_pos or 50.0,
+            y_pos=req.y_pos or 50.0
+        )
+
+        if is_real:
+            camera_streamer.start_camera(new_cam)
+
+        self.cameras.append(new_cam)
+        return new_cam
+
+    def disconnect_camera(self, camera_id: str) -> Camera:
+        for cam in self.cameras:
+            if cam.camera_id == camera_id or cam.id == camera_id:
+                camera_streamer.stop_camera(cam.camera_id)
+                cam.connection_status = ConnectionStatus.DISCONNECTED
+                cam.status = "Offline"
+                return cam
+        raise ValueError("Camera not found")
+
+    def reconnect_camera(self, camera_id: str) -> Camera:
+        for cam in self.cameras:
+            if cam.camera_id == camera_id or cam.id == camera_id:
+                cam.connection_status = ConnectionStatus.CONNECTING
+                cam.status = "Online"
+                if cam.is_real_camera:
+                    camera_streamer.start_camera(cam)
+                else:
+                    cam.connection_status = ConnectionStatus.CONNECTED
+                    cam.last_connected_at = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+                return cam
+        raise ValueError("Camera not found")
+
+    def delete_camera(self, camera_id: str):
+        for i, cam in enumerate(self.cameras):
+            if cam.camera_id == camera_id or cam.id == camera_id:
+                camera_streamer.stop_camera(cam.camera_id)
+                self.cameras.pop(i)
+                return True
+        raise ValueError("Camera not found")
 
     async def simulation_loop(self):
         self.is_running = True

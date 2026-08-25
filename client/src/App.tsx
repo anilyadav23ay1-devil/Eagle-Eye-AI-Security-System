@@ -10,6 +10,7 @@ import { SecurityRulesManager } from './components/rules/SecurityRulesManager';
 import { CameraMatrixView } from './components/cameras/CameraMatrixView';
 import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
 import { EnrollmentModal } from './components/enrollment/EnrollmentModal';
+import { ConnectCameraModal } from './components/cameras/ConnectCameraModal';
 
 const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
@@ -49,8 +50,9 @@ const AppContent: React.FC = () => {
         </main>
       </div>
 
-      {/* Global Enrollment Modal (opens on unknown detection or header button) */}
+      {/* Global Modals */}
       <EnrollmentModal />
+      <ConnectCameraModal />
     </div>
   );
 };

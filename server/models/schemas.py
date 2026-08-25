@@ -39,6 +39,33 @@ class AlertStatus(str, Enum):
     RESOLVED = "Resolved"
     FALSE_ALARM = "False Alarm"
 
+class CameraBrand(str, Enum):
+    HIKVISION = "Hikvision"
+    DAHUA = "Dahua"
+    AXIS = "Axis"
+    CP_PLUS = "CP Plus"
+    REOLINK = "Reolink"
+    HANWHA = "Hanwha / Samsung"
+    UNIVIEW = "Uniview"
+    AMCREST = "Amcrest"
+    GENERIC_RTSP = "Generic RTSP"
+    MOBILE_IP = "Mobile IP Cam (DroidCam/IP Webcam)"
+    USB_WEBCAM = "Local USB / Built-in Webcam"
+    SIMULATED = "Simulated Optical Node"
+
+class StreamType(str, Enum):
+    RTSP = "RTSP"
+    HTTP_MJPEG = "HTTP/MJPEG"
+    ONVIF = "ONVIF"
+    USB_LOCAL = "USB Local"
+    SIMULATED = "Simulated"
+
+class ConnectionStatus(str, Enum):
+    CONNECTED = "Connected"
+    CONNECTING = "Connecting"
+    DISCONNECTED = "Disconnected"
+    ERROR = "Error"
+
 class AppearanceSnapshot(BaseModel):
     id: str
     person_id: str
@@ -70,7 +97,7 @@ class Person(BaseModel):
     id_proof_type: str = "Aadhaar Card"
     id_proof_number: str
     role: PersonRole = PersonRole.VISITOR
-    permission_type: str = "Temporary"  # Temporary or Permanent
+    permission_type: str = "Temporary"
     valid_from: str
     valid_to: str
     allowed_zones: List[str] = Field(default_factory=list)
@@ -95,13 +122,56 @@ class Camera(BaseModel):
     floor: str
     room: str
     status: str = "Online"  # Online, Degraded, Offline
+    connection_status: ConnectionStatus = ConnectionStatus.CONNECTED
+    brand: CameraBrand = CameraBrand.SIMULATED
+    stream_type: StreamType = StreamType.SIMULATED
+    stream_url: Optional[str] = None
+    ip_address: Optional[str] = None
+    port: Optional[int] = 554
+    username: Optional[str] = None
+    password: Optional[str] = None
+    channel: Optional[int] = 1
+    device_index: Optional[int] = 0
+    is_real_camera: bool = False
+    last_connected_at: Optional[str] = None
+    last_error: Optional[str] = None
     fps: int = 30
     resolution: str = "4K UHD (3840x2160)"
     latency_ms: int = 18
     ai_models: List[str] = Field(default_factory=lambda: ["YOLOv8", "DeepFace", "ByteTrack"])
     fov_angle: int = 90
-    x_pos: float
-    y_pos: float
+    x_pos: float = 50.0
+    y_pos: float = 50.0
+
+class CameraConnectRequest(BaseModel):
+    camera_id: Optional[str] = None
+    name: str
+    building: str = "Corporate Tower A"
+    floor: str = "Floor 2"
+    room: str = "Main Entrance"
+    brand: CameraBrand = CameraBrand.GENERIC_RTSP
+    stream_type: StreamType = StreamType.RTSP
+    stream_url: Optional[str] = None
+    ip_address: Optional[str] = None
+    port: Optional[int] = 554
+    username: Optional[str] = None
+    password: Optional[str] = None
+    channel: Optional[int] = 1
+    device_index: Optional[int] = 0
+    ai_models: List[str] = Field(default_factory=lambda: ["YOLOv8", "DeepFace", "ByteTrack"])
+    x_pos: Optional[float] = 50.0
+    y_pos: Optional[float] = 50.0
+
+class CameraTestRequest(BaseModel):
+    brand: CameraBrand
+    stream_type: StreamType
+    stream_url: Optional[str] = None
+    ip_address: Optional[str] = None
+    port: Optional[int] = 554
+    username: Optional[str] = None
+    password: Optional[str] = None
+    channel: Optional[int] = 1
+    device_index: Optional[int] = 0
 
 class RoomZone(BaseModel):
     id: str
@@ -112,7 +182,7 @@ class RoomZone(BaseModel):
     current_occupancy: int = 0
     is_restricted: bool = False
     allowed_roles: List[str] = Field(default_factory=list)
-    occupants: List[str] = Field(default_factory=list)  # list of person_ids
+    occupants: List[str] = Field(default_factory=list)
     x: float
     y: float
     width: float
