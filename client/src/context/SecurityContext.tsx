@@ -3,7 +3,8 @@ import {
   Person, Camera, RoomZone, SecurityAlert, SecurityRule, 
   BuildingStats, AppearanceSnapshot, MovementEvent, PersonRole, AccessStatus, 
   AlertSeverity, AlertType, AlertStatus, CameraConnectPayload, CameraTestPayload,
-  CameraBrand, StreamType, ConnectionStatus, BuildingProfile, FloorProfile, CanvasShape, BlueprintType
+  CameraBrand, StreamType, ConnectionStatus, BuildingProfile, FloorProfile, CanvasShape, BlueprintType,
+  PersonaRole
 } from '../types';
 
 interface SecurityContextType {
@@ -21,13 +22,16 @@ interface SecurityContextType {
   selectedRoom: RoomZone | null;
   activeFloor: string;
   activeBuilding: string;
+  activePersona: PersonaRole;
   soundEnabled: boolean;
   isLockdownMode: boolean;
   isEnrollModalOpen: boolean;
   isConnectCamModalOpen: boolean;
+  isChecklistOpen: boolean;
   unknownDetectionData: { trackId: string; photoUrl: string } | null;
   isConnected: boolean;
   // Actions
+  setActivePersona: (role: PersonaRole) => void;
   setSelectedPersonId: (id: string) => void;
   setSelectedCameraId: (id: string | null) => void;
   setSelectedRoomId: (id: string | null) => void;
@@ -37,12 +41,15 @@ interface SecurityContextType {
   toggleLockdown: () => void;
   setIsEnrollModalOpen: (open: boolean) => void;
   setIsConnectCamModalOpen: (open: boolean) => void;
+  setIsChecklistOpen: (open: boolean) => void;
   triggerUnknownPersonPrompt: () => void;
   enrollPerson: (data: any) => Promise<void>;
   resolveAlert: (alertId: string, notes: string) => Promise<void>;
   simulateAlert: (type: AlertType, roomName?: string) => Promise<void>;
   // Camera Actions
   connectCamera: (payload: CameraConnectPayload) => Promise<Camera>;
+  connectLaptopWebcam: (deviceIndex?: number, roomName?: string) => Promise<Camera>;
+  connectMobileCamera: (phoneIp: string, port?: number, streamType?: string, roomName?: string) => Promise<Camera>;
   disconnectCamera: (cameraId: string) => Promise<void>;
   reconnectCamera: (cameraId: string) => Promise<void>;
   deleteCamera: (cameraId: string) => Promise<void>;
@@ -63,8 +70,8 @@ const DEFAULT_STATS: BuildingStats = {
   authorized: 116,
   unknown: 8,
   alerts: 4,
-  cameras_online: 96,
-  total_cameras: 96,
+  cameras_online: 7,
+  total_cameras: 7,
   entries_today: 256,
   exits_today: 228,
   floor_occupancies: {
@@ -74,6 +81,17 @@ const DEFAULT_STATS: BuildingStats = {
     'Floor 1': 30,
   },
 };
+
+// Generic list deduplication helper
+function upsertItem<T>(list: T[], item: T, key: keyof T): T[] {
+  const index = list.findIndex(x => x[key] === item[key]);
+  if (index >= 0) {
+    const copy = [...list];
+    copy[index] = item;
+    return copy;
+  }
+  return [...list, item];
+}
 
 const SecurityContext = createContext<SecurityContextType | undefined>(undefined);
 
@@ -86,6 +104,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [rules, setRules] = useState<SecurityRule[]>([]);
   const [buildings, setBuildings] = useState<BuildingProfile[]>([]);
   
+  const [activePersona, setActivePersona] = useState<PersonaRole>('security');
   const [selectedPersonId, setSelectedPersonId] = useState<string>('P-10087');
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>('CAM-021');
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -95,6 +114,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [isLockdownMode, setIsLockdownMode] = useState<boolean>(false);
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState<boolean>(false);
   const [isConnectCamModalOpen, setIsConnectCamModalOpen] = useState<boolean>(false);
+  const [isChecklistOpen, setIsChecklistOpen] = useState<boolean>(false);
   const [unknownDetectionData, setUnknownDetectionData] = useState<{ trackId: string; photoUrl: string } | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(false);
 
@@ -156,32 +176,26 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
               setStats(msg.data.stats);
               setPersons(msg.data.persons);
             } else if (msg.type === 'NEW_ALERT') {
-              setAlerts(prev => [msg.data, ...prev]);
+              setAlerts(prev => upsertItem(prev, msg.data, 'id'));
               playAlertSound(msg.data.severity);
             } else if (msg.type === 'ALERT_RESOLVED') {
-              setAlerts(prev => prev.map(a => a.id === msg.data.id ? msg.data : a));
+              setAlerts(prev => prev.map(a => (a.id === msg.data.id || a.alert_id === msg.data.alert_id) ? msg.data : a));
             } else if (msg.type === 'NEW_PERSON_ENROLLED') {
-              setPersons(prev => [msg.data, ...prev]);
+              setPersons(prev => upsertItem(prev, msg.data, 'person_id'));
             } else if (msg.type === 'CAMERA_CONNECTED') {
-              setCameras(prev => {
-                const idx = prev.findIndex(c => c.camera_id === msg.data.camera_id);
-                if (idx >= 0) {
-                  const updated = [...prev];
-                  updated[idx] = msg.data;
-                  return updated;
-                }
-                return [msg.data, ...prev];
-              });
+              setCameras(prev => upsertItem(prev, msg.data, 'camera_id'));
             } else if (msg.type === 'CAMERA_DISCONNECTED' || msg.type === 'CAMERA_RECONNECTED') {
               setCameras(prev => prev.map(c => c.camera_id === msg.data.camera_id ? msg.data : c));
+            } else if (msg.type === 'CAMERA_DELETED') {
+              setCameras(prev => prev.filter(c => c.camera_id !== msg.data.camera_id));
             } else if (msg.type === 'BUILDING_CREATED') {
-              setBuildings(prev => [...prev, msg.data]);
+              setBuildings(prev => upsertItem(prev, msg.data, 'id'));
             } else if (msg.type === 'BUILDING_DELETED') {
-              setBuildings(prev => prev.filter(b => b.id !== msg.data.building_id));
+              setBuildings(prev => prev.filter(b => b.id !== msg.data.building_id && b.name !== msg.data.building_id));
             } else if (msg.type === 'ROOM_CREATED') {
-              setRooms(prev => [...prev, msg.data]);
+              setRooms(prev => upsertItem(prev, msg.data, 'id'));
             } else if (msg.type === 'ROOM_DELETED') {
-              setRooms(prev => prev.filter(r => r.id !== msg.data.room_id));
+              setRooms(prev => prev.filter(r => r.id !== msg.data.room_id && r.name !== msg.data.room_id));
             } else if (msg.type === 'BLUEPRINT_SAVED') {
               setBuildings(prev => prev.map(b => ({
                 ...b,
@@ -202,6 +216,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     connectWs();
 
+    // Fetch initial data once cleanly
     fetch('http://localhost:8000/api/buildings')
       .then(r => r.json())
       .then(b => setBuildings(b))
@@ -210,6 +225,11 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
     fetch('http://localhost:8000/api/cameras')
       .then(r => r.json())
       .then(cams => setCameras(cams))
+      .catch(() => {});
+
+    fetch('http://localhost:8000/api/rooms')
+      .then(r => r.json())
+      .then(rms => setRooms(rms))
       .catch(() => {});
 
     fetch('http://localhost:8000/api/stats')
@@ -222,7 +242,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
     };
   }, []);
 
-  // --- Building & Blueprint API Actions ---
+  // --- Building & Blueprint API Actions (Strict Deduplication) ---
 
   const createBuilding = async (data: any): Promise<BuildingProfile> => {
     const res = await fetch('http://localhost:8000/api/buildings', {
@@ -231,7 +251,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
       body: JSON.stringify(data)
     });
     const bldg = await res.json();
-    setBuildings(prev => [...prev, bldg]);
+    setBuildings(prev => upsertItem(prev, bldg, 'id'));
     setActiveBuilding(bldg.name);
     return bldg;
   };
@@ -248,9 +268,9 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
       body: JSON.stringify(data)
     });
     const fl = await res.json();
-    setBuildings(prev => prev.map(b => b.id === buildingId || b.name === buildingId ? {
+    setBuildings(prev => prev.map(b => (b.id === buildingId || b.name === buildingId) ? {
       ...b,
-      floors: [...b.floors, fl],
+      floors: upsertItem(b.floors, fl, 'id'),
       total_floors: b.floors.length + 1
     } : b));
     return fl;
@@ -258,7 +278,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const deleteFloor = async (buildingId: string, floorId: string) => {
     await fetch(`http://localhost:8000/api/buildings/${buildingId}/floors/${floorId}`, { method: 'DELETE' });
-    setBuildings(prev => prev.map(b => b.id === buildingId || b.name === buildingId ? {
+    setBuildings(prev => prev.map(b => (b.id === buildingId || b.name === buildingId) ? {
       ...b,
       floors: b.floors.filter(f => f.id !== floorId && f.floor_name !== floorId)
     } : b));
@@ -271,7 +291,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
       body: JSON.stringify(data)
     });
     const rm = await res.json();
-    setRooms(prev => [...prev, rm]);
+    setRooms(prev => upsertItem(prev, rm, 'id'));
     return rm;
   };
 
@@ -325,17 +345,48 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
       body: JSON.stringify(payload)
     });
     const newCam: Camera = await res.json();
-    setCameras(prev => {
-      const idx = prev.findIndex(c => c.camera_id === newCam.camera_id);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = newCam;
-        return copy;
-      }
-      return [newCam, ...prev];
-    });
+    setCameras(prev => upsertItem(prev, newCam, 'camera_id'));
     setSelectedCameraId(newCam.camera_id);
     return newCam;
+  };
+
+  // 1-Click Laptop Webcam Connection Helper
+  const connectLaptopWebcam = async (deviceIndex: number = 0, roomName: string = 'Server Room'): Promise<Camera> => {
+    const payload: CameraConnectPayload = {
+      name: `Laptop Integrated Webcam (Device #${deviceIndex})`,
+      building: activeBuilding,
+      floor: activeFloor,
+      room: roomName,
+      brand: 'Local USB / Built-in Webcam',
+      stream_type: 'USB Local',
+      device_index: deviceIndex,
+      ai_models: ['YOLOv8', 'CentroidTracker', 'HUDAnnotator']
+    };
+    return await connectCamera(payload);
+  };
+
+  // 1-Click Mobile Phone Camera Connection Helper
+  const connectMobileCamera = async (phoneIp: string, port: number = 8080, streamType: string = 'IP_WEBCAM', roomName: string = 'Main Entrance'): Promise<Camera> => {
+    let streamUrl = `http://${phoneIp}:${port}/video`;
+    if (streamType === 'DROIDCAM') {
+      streamUrl = `http://${phoneIp}:${port || 4747}/video`;
+    } else if (streamType === 'RTSP_MOBILE') {
+      streamUrl = `rtsp://${phoneIp}:${port || 8080}/h264_pcm.sdp`;
+    }
+
+    const payload: CameraConnectPayload = {
+      name: `Mobile Optical Cam (${phoneIp})`,
+      building: activeBuilding,
+      floor: activeFloor,
+      room: roomName,
+      brand: 'Mobile IP Cam (DroidCam/IP Webcam)',
+      stream_type: 'HTTP/MJPEG',
+      stream_url: streamUrl,
+      ip_address: phoneIp,
+      port: port,
+      ai_models: ['YOLOv8', 'CentroidTracker', 'HUDAnnotator']
+    };
+    return await connectCamera(payload);
   };
 
   const disconnectCamera = async (cameraId: string) => {
@@ -375,24 +426,33 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
     });
     if (res.ok) {
       const enrolled = await res.json();
-      setPersons(prev => [enrolled, ...prev]);
+      setPersons(prev => upsertItem(prev, enrolled, 'person_id'));
     }
   };
 
   const resolveAlert = async (alertId: string, notes: string) => {
-    await fetch(`http://localhost:8000/api/alerts/${alertId}/resolve`, {
+    const res = await fetch(`http://localhost:8000/api/alerts/${alertId}/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ notes, status: 'Resolved' })
     });
+    if (res.ok) {
+      const resolved = await res.json();
+      setAlerts(prev => prev.map(a => (a.id === alertId || a.alert_id === alertId) ? resolved : a));
+    }
   };
 
   const simulateAlert = async (type: AlertType, roomName: string = 'Server Room') => {
-    await fetch('http://localhost:8000/api/alerts/simulate', {
+    const res = await fetch('http://localhost:8000/api/alerts/simulate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ alert_type: type, room_name: roomName })
     });
+    if (res.ok) {
+      const alert = await res.json();
+      setAlerts(prev => upsertItem(prev, alert, 'id'));
+      playAlertSound(alert.severity);
+    }
   };
 
   const toggleSound = () => setSoundEnabled(prev => !prev);
@@ -418,12 +478,15 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
       selectedRoom,
       activeFloor,
       activeBuilding,
+      activePersona,
       soundEnabled,
       isLockdownMode,
       isEnrollModalOpen,
       isConnectCamModalOpen,
+      isChecklistOpen,
       unknownDetectionData,
       isConnected,
+      setActivePersona,
       setSelectedPersonId,
       setSelectedCameraId,
       setSelectedRoomId,
@@ -433,11 +496,14 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
       toggleLockdown,
       setIsEnrollModalOpen,
       setIsConnectCamModalOpen,
+      setIsChecklistOpen,
       triggerUnknownPersonPrompt,
       enrollPerson,
       resolveAlert,
       simulateAlert,
       connectCamera,
+      connectLaptopWebcam,
+      connectMobileCamera,
       disconnectCamera,
       reconnectCamera,
       deleteCamera,

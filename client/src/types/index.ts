@@ -36,6 +36,17 @@ export type BlueprintType = 'SVG' | 'Image' | 'PDF' | 'Custom Drawn';
 
 export type ShapeType = 'RECT' | 'POLYGON' | 'WALL_LINE' | 'DOOR' | 'CAMERA_NODE' | 'TEXT_LABEL' | 'FREEHAND';
 
+export type PersonaRole = 'owner' | 'engineer' | 'security' | 'operator' | 'designer' | 'visitor';
+
+export interface PersonaConfig {
+  id: PersonaRole;
+  title: string;
+  badge: string;
+  color: string;
+  description: string;
+  focusArea: string;
+}
+
 export interface Point2D {
   x: number;
   y: number;

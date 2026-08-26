@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SecurityProvider } from './context/SecurityContext';
+import { SecurityProvider, useSecurity } from './context/SecurityContext';
 import { Header } from './components/common/Header';
 import { Sidebar, NavTab } from './components/common/Sidebar';
 import { LiveDashboard } from './components/dashboard/LiveDashboard';
@@ -12,13 +12,15 @@ import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
 import { BlueprintStudio } from './components/blueprint/BlueprintStudio';
 import { EnrollmentModal } from './components/enrollment/EnrollmentModal';
 import { ConnectCameraModal } from './components/cameras/ConnectCameraModal';
+import { ChecklistModal } from './components/common/ChecklistModal';
 
 const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
+  const { isChecklistOpen, setIsChecklistOpen, activePersona } = useSecurity();
 
   return (
     <div className="min-h-screen bg-cyber-dark text-slate-100 flex flex-col font-sans selection:bg-sky-500 selection:text-white">
-      {/* Top Cyber Command Header */}
+      {/* Top Cyber Command Header with Persona Switcher */}
       <Header />
 
       {/* Main Layout Area */}
@@ -55,6 +57,7 @@ const AppContent: React.FC = () => {
       {/* Global Modals */}
       <EnrollmentModal />
       <ConnectCameraModal />
+      <ChecklistModal isOpen={isChecklistOpen} onClose={() => setIsChecklistOpen(false)} />
     </div>
   );
 };
