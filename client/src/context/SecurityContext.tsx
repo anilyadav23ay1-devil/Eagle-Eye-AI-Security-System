@@ -3,8 +3,7 @@ import {
   Person, Camera, RoomZone, SecurityAlert, SecurityRule, 
   BuildingStats, AppearanceSnapshot, MovementEvent, PersonRole, AccessStatus, 
   AlertSeverity, AlertType, AlertStatus, CameraConnectPayload, CameraTestPayload,
-  CameraBrand, StreamType, ConnectionStatus, BuildingProfile, FloorProfile, CanvasShape, BlueprintType,
-  PersonaRole
+  CameraBrand, StreamType, ConnectionStatus, BuildingProfile, FloorProfile, CanvasShape, BlueprintType
 } from '../types';
 
 interface SecurityContextType {
@@ -22,16 +21,13 @@ interface SecurityContextType {
   selectedRoom: RoomZone | null;
   activeFloor: string;
   activeBuilding: string;
-  activePersona: PersonaRole;
   soundEnabled: boolean;
   isLockdownMode: boolean;
   isEnrollModalOpen: boolean;
   isConnectCamModalOpen: boolean;
-  isChecklistOpen: boolean;
   unknownDetectionData: { trackId: string; photoUrl: string } | null;
   isConnected: boolean;
   // Actions
-  setActivePersona: (role: PersonaRole) => void;
   setSelectedPersonId: (id: string) => void;
   setSelectedCameraId: (id: string | null) => void;
   setSelectedRoomId: (id: string | null) => void;
@@ -41,7 +37,6 @@ interface SecurityContextType {
   toggleLockdown: () => void;
   setIsEnrollModalOpen: (open: boolean) => void;
   setIsConnectCamModalOpen: (open: boolean) => void;
-  setIsChecklistOpen: (open: boolean) => void;
   triggerUnknownPersonPrompt: () => void;
   enrollPerson: (data: any) => Promise<void>;
   resolveAlert: (alertId: string, notes: string) => Promise<void>;
@@ -104,7 +99,6 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [rules, setRules] = useState<SecurityRule[]>([]);
   const [buildings, setBuildings] = useState<BuildingProfile[]>([]);
   
-  const [activePersona, setActivePersona] = useState<PersonaRole>('security');
   const [selectedPersonId, setSelectedPersonId] = useState<string>('P-10087');
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>('CAM-021');
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -114,7 +108,6 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [isLockdownMode, setIsLockdownMode] = useState<boolean>(false);
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState<boolean>(false);
   const [isConnectCamModalOpen, setIsConnectCamModalOpen] = useState<boolean>(false);
-  const [isChecklistOpen, setIsChecklistOpen] = useState<boolean>(false);
   const [unknownDetectionData, setUnknownDetectionData] = useState<{ trackId: string; photoUrl: string } | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(false);
 
@@ -216,7 +209,6 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     connectWs();
 
-    // Fetch initial data once cleanly
     fetch('http://localhost:8000/api/buildings')
       .then(r => r.json())
       .then(b => setBuildings(b))
@@ -478,15 +470,12 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
       selectedRoom,
       activeFloor,
       activeBuilding,
-      activePersona,
       soundEnabled,
       isLockdownMode,
       isEnrollModalOpen,
       isConnectCamModalOpen,
-      isChecklistOpen,
       unknownDetectionData,
       isConnected,
-      setActivePersona,
       setSelectedPersonId,
       setSelectedCameraId,
       setSelectedRoomId,
@@ -496,7 +485,6 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
       toggleLockdown,
       setIsEnrollModalOpen,
       setIsConnectCamModalOpen,
-      setIsChecklistOpen,
       triggerUnknownPersonPrompt,
       enrollPerson,
       resolveAlert,
