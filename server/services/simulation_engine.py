@@ -24,19 +24,18 @@ from seed_data.initial_state import (
 
 class RealSecurityEngine:
     def __init__(self):
-        # 1. Initialize persistent state from database
-        self._init_state_from_db()
         self.active_connections: Set[WebSocket] = set()
         self.is_running: bool = False
         self.total_entries: int = 256
         self.total_exits: int = 228
-        self.is_real_ai_mode: bool = True  # Real AI Video Processing Engine Active
+        self.is_real_ai_mode: bool = True
+        self._prompt_cooldowns: Dict[str, float] = {}
+        self._init_state_from_db()
 
     def _init_state_from_db(self):
         """Loads state from SQLite database; seeds initial data if empty."""
         db_buildings = db_manager.get_all_buildings()
         if not db_buildings:
-            # Seed default buildings
             tower_a = BuildingProfile(
                 id="bldg-tower-a",
                 name="Corporate Tower A",
@@ -63,24 +62,8 @@ class RealSecurityEngine:
                         rooms=[r.model_copy(deep=True) for r in INITIAL_ROOMS_FLOOR2],
                         camera_ids=["CAM-014", "CAM-015", "CAM-018", "CAM-019", "CAM-021"]
                     ),
-                    FloorProfile(
-                        id="fl-a-3",
-                        floor_number=3,
-                        floor_name="Floor 3",
-                        building_id="bldg-tower-a",
-                        blueprint_type=BlueprintType.CUSTOM_DRAWN,
-                        rooms=[],
-                        camera_ids=[]
-                    ),
-                    FloorProfile(
-                        id="fl-a-4",
-                        floor_number=4,
-                        floor_name="Floor 4",
-                        building_id="bldg-tower-a",
-                        blueprint_type=BlueprintType.CUSTOM_DRAWN,
-                        rooms=[],
-                        camera_ids=[]
-                    )
+                    FloorProfile(id="fl-a-3", floor_number=3, floor_name="Floor 3", building_id="bldg-tower-a", blueprint_type=BlueprintType.CUSTOM_DRAWN, rooms=[]),
+                    FloorProfile(id="fl-a-4", floor_number=4, floor_name="Floor 4", building_id="bldg-tower-a", blueprint_type=BlueprintType.CUSTOM_DRAWN, rooms=[])
                 ]
             )
             tower_b = BuildingProfile(
@@ -101,7 +84,6 @@ class RealSecurityEngine:
         else:
             self.buildings = db_buildings
 
-        # Load Persons
         db_persons = db_manager.get_all_persons()
         if not db_persons:
             for p in INITIAL_PERSONS.values():
@@ -110,7 +92,6 @@ class RealSecurityEngine:
         else:
             self.persons = db_persons
 
-        # Load Rooms
         db_rooms = db_manager.get_all_rooms()
         if not db_rooms:
             for r in INITIAL_ROOMS_FLOOR2:
@@ -119,16 +100,18 @@ class RealSecurityEngine:
         else:
             self.rooms = db_rooms
 
-        # Load Cameras
         db_cams = db_manager.get_all_cameras()
         if not db_cams:
             for c in INITIAL_CAMERAS:
                 db_manager.save_camera(c)
             self.cameras = [c.model_copy(deep=True) for c in INITIAL_CAMERAS]
         else:
-            self.cameras = db_cams
+            # Deduplicate cameras by camera_id and name
+            unique_cams: Dict[str, Camera] = {}
+            for c in db_cams:
+                unique_cams[c.camera_id] = c
+            self.cameras = list(unique_cams.values())
 
-        # Load Alerts
         db_alerts = db_manager.get_all_alerts()
         if not db_alerts:
             for a in INITIAL_ALERTS:
@@ -137,7 +120,6 @@ class RealSecurityEngine:
         else:
             self.alerts = db_alerts
 
-        # Load Rules
         db_rules = db_manager.get_all_rules()
         if not db_rules:
             for r in INITIAL_RULES:
@@ -182,7 +164,7 @@ class RealSecurityEngine:
     def get_stats(self) -> BuildingStats:
         total = len(self.persons)
         auth = sum(1 for p in self.persons.values() if p.status == AccessStatus.AUTHORIZED)
-        unknown = sum(1 for p in self.persons.values() if p.status == AccessStatus.UNKNOWN or p.role == "Unknown")
+        unknown = sum(1 for p in self.persons.values() if p.status == AccessStatus.UNKNOWN or p.role == "Unknown" or "Unknown" in p.name)
         active_alerts = sum(1 for a in self.alerts if a.status == AlertStatus.ACTIVE)
         online_cams = sum(1 for c in self.cameras if c.status == "Online" or c.connection_status == ConnectionStatus.CONNECTED)
 
@@ -205,7 +187,7 @@ class RealSecurityEngine:
             floor_occupancies=floor_counts
         )
 
-    # --- Building, Floor, and Room Management with Persistence ---
+    # --- Building, Floor, and Room Management ---
 
     def add_building(self, req: BuildingCreateRequest) -> BuildingProfile:
         bldg_id = f"bldg-{len(self.buildings)+1}-{req.code.lower()}"
@@ -293,7 +275,6 @@ class RealSecurityEngine:
         self.rooms.append(new_room)
         db_manager.save_room(new_room)
 
-        # Sync to floor
         for b in self.buildings:
             if b.name == req.building or b.id == req.building:
                 for fl in b.floors:
@@ -341,7 +322,7 @@ class RealSecurityEngine:
                         return fl
         raise ValueError("Floor not found for blueprint update")
 
-    # --- Person & Camera & Alert Operations with Real AI & DB ---
+    # --- Person & Camera Operations with Deduplication & Real Capture ---
 
     def enroll_person(self, req: PersonEnrollmentRequest) -> Person:
         pid_num = len(self.persons) + 10088
@@ -448,12 +429,51 @@ class RealSecurityEngine:
         return camera_streamer.test_connection(req)
 
     def add_or_connect_camera(self, req: CameraConnectRequest) -> Camera:
-        cam_id = req.camera_id or f"CAM-{len(self.cameras) + 1:03d}"
-        resolved_url = req.stream_url or str(camera_streamer.build_stream_url(req))
+        """Connects or updates camera with strict deduplication to prevent 2-3 same-named cameras."""
         is_real = req.stream_type != StreamType.SIMULATED
+        resolved_url = req.stream_url or str(camera_streamer.build_stream_url(req))
 
+        # Check for existing camera by ID, device index, or stream URL
+        existing_cam: Optional[Camera] = None
+        for c in self.cameras:
+            if req.camera_id and (c.camera_id == req.camera_id or c.id == req.camera_id):
+                existing_cam = c
+                break
+            if req.stream_type == StreamType.USB_LOCAL and c.stream_type == StreamType.USB_LOCAL and c.device_index == req.device_index:
+                existing_cam = c
+                break
+            if req.stream_url and c.stream_url == req.stream_url:
+                existing_cam = c
+                break
+            if c.name.strip().lower() == req.name.strip().lower() and c.building == req.building:
+                existing_cam = c
+                break
+
+        if existing_cam:
+            # Update existing camera in place
+            existing_cam.name = req.name
+            existing_cam.building = req.building
+            existing_cam.floor = req.floor
+            existing_cam.room = req.room
+            existing_cam.status = "Online"
+            existing_cam.connection_status = ConnectionStatus.CONNECTED
+            existing_cam.stream_type = req.stream_type
+            existing_cam.stream_url = resolved_url
+            existing_cam.device_index = req.device_index
+            existing_cam.is_real_camera = is_real
+            existing_cam.last_connected_at = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+            existing_cam.ai_models = req.ai_models
+
+            if is_real:
+                camera_streamer.start_camera(existing_cam)
+
+            db_manager.save_camera(existing_cam)
+            return existing_cam
+
+        # If not existing, create single clean unique camera
+        cam_id = req.camera_id or f"CAM-{len(self.cameras) + 1:03d}"
         new_cam = Camera(
-            id=f"cam-{len(self.cameras)+1}",
+            id=f"cam-{cam_id.lower()}",
             camera_id=cam_id,
             name=req.name,
             building=req.building,
@@ -522,7 +542,7 @@ class RealSecurityEngine:
         raise ValueError("Camera not found")
 
     async def live_ai_processing_loop(self):
-        """Main Real AI Engine loop: evaluates live video frames and security rules."""
+        """Main Real AI Engine loop: evaluates live video frames, captures faces, and triggers registration prompts."""
         self.is_running = True
         step = 0
 
@@ -536,6 +556,24 @@ class RealSecurityEngine:
                     frame = camera_streamer.latest_frames[cam.camera_id]
                     rooms_on_floor = [r for r in self.rooms if r.floor == cam.floor]
                     _, detected_objects = ai_vision_engine.process_frame(cam.camera_id, frame, rooms_on_floor)
+
+                    # Trigger Unknown Person Photo Capture & Registration when human appears on camera
+                    for obj in detected_objects:
+                        if obj.photo_base64:
+                            cd_key = f"unknown-prompt-{obj.track_id}"
+                            if time.time() - self._prompt_cooldowns.get(cd_key, 0) > 25.0:
+                                self._prompt_cooldowns[cd_key] = time.time()
+                                if self.active_connections:
+                                    await self.broadcast({
+                                        "type": "UNKNOWN_PERSON_DETECTED",
+                                        "data": {
+                                            "trackId": obj.track_id,
+                                            "photoUrl": obj.photo_base64,
+                                            "camera_id": cam.camera_id,
+                                            "room": obj.current_zone or cam.room,
+                                            "timestamp": datetime.now().strftime("%I:%M:%S %p")
+                                        }
+                                    })
 
                     # 2. Evaluate security rules in real time
                     new_alerts = rules_engine.evaluate_rules(

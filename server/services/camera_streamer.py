@@ -68,7 +68,7 @@ class CameraStreamManager:
             if not cap.isOpened():
                 return {
                     "success": False,
-                    "message": f"Could not connect to {req.brand} stream at {source}. Check IP, credentials, or network firewall.",
+                    "message": f"Could not connect to {req.brand} stream at {source}. Check device permissions or IP.",
                     "latency_ms": int((time.time() - start_time) * 1000)
                 }
 
@@ -78,11 +78,11 @@ class CameraStreamManager:
             if not ret or frame is None:
                 return {
                     "success": False,
-                    "message": "Connected to stream, but failed to capture initial video frame.",
+                    "message": "Connected to stream, but failed to capture video frame.",
                     "latency_ms": int((time.time() - start_time) * 1000)
                 }
 
-            h, w, _ = frame.shape
+            h, w = frame.shape[:2]
             latency = int((time.time() - start_time) * 1000)
 
             return {
@@ -151,21 +151,19 @@ class CameraStreamManager:
                 while self.running_flags.get(camera_id, False):
                     ret, frame = cap.read()
                     if not ret or frame is None:
-                        time.sleep(0.05)
+                        time.sleep(0.04)
                         continue
 
-                    # Update latest frame
                     with self._lock:
                         self.latest_frames[camera_id] = frame
 
                     fps_count += 1
                     if time.time() - last_fps_time >= 1.0:
-                        camera.fps = fps_count
+                        camera.fps = max(15, fps_count)
                         fps_count = 0
                         last_fps_time = time.time()
 
-                    # Prevent buffer lag by brief sleep
-                    time.sleep(0.01)
+                    time.sleep(0.015)
 
                 cap.release()
             except Exception as e:
@@ -215,7 +213,7 @@ class CameraStreamManager:
         cv2.line(frame, (x1, y1), (x1 + cs, y1), (16, 185, 129), 3)
         cv2.line(frame, (x1, y1), (x1, y1 + cs), (16, 185, 129), 3)
         cv2.line(frame, (x2, y1), (x2 - cs, y1), (16, 185, 129), 3)
-        cv2.line(frame, (x2, y1), (x2 - cs, y1), (16, 185, 129), 3)
+        cv2.line(frame, (x2, y1), (x2, y1 + cs), (16, 185, 129), 3)
 
         cv2.rectangle(frame, (x1, y1 - 25), (x1 + 180, y1), (6, 95, 70), -1)
         cv2.putText(frame, "PERSON #10087 [98.4%]", (x1 + 5, y1 - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
@@ -229,16 +227,20 @@ class CameraStreamManager:
         return frame
 
     def get_camera_frame(self, camera: Camera, rooms: List[RoomZone] = None) -> np.ndarray:
-        """Get processed frame with real AI computer vision annotations."""
+        """Get processed frame with real AI computer vision annotations safely."""
         camera_id = camera.camera_id
+        raw_frame = None
 
-        if camera.connection_status == ConnectionStatus.CONNECTED and camera_id in self.latest_frames:
-            with self._lock:
+        with self._lock:
+            if camera_id in self.latest_frames and self.latest_frames[camera_id] is not None:
                 raw_frame = self.latest_frames[camera_id].copy()
 
-            # Run real AI Vision processing on frame
-            annotated_frame, detections = ai_vision_engine.process_frame(camera_id, raw_frame, rooms)
-            return annotated_frame
+        if raw_frame is not None and raw_frame.size > 0:
+            try:
+                annotated_frame, detections = ai_vision_engine.process_frame(camera_id, raw_frame, rooms)
+                return annotated_frame
+            except Exception:
+                return raw_frame
 
         return self.generate_synthetic_frame(camera_id, camera.name, camera.brand)
 

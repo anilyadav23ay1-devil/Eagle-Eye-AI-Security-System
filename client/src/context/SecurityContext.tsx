@@ -175,6 +175,13 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
               setAlerts(prev => prev.map(a => (a.id === msg.data.id || a.alert_id === msg.data.alert_id) ? msg.data : a));
             } else if (msg.type === 'NEW_PERSON_ENROLLED') {
               setPersons(prev => upsertItem(prev, msg.data, 'person_id'));
+            } else if (msg.type === 'UNKNOWN_PERSON_DETECTED') {
+              setUnknownDetectionData({
+                trackId: msg.data.trackId,
+                photoUrl: msg.data.photoUrl
+              });
+              setIsEnrollModalOpen(true);
+              playAlertSound('Medium');
             } else if (msg.type === 'CAMERA_CONNECTED') {
               setCameras(prev => upsertItem(prev, msg.data, 'camera_id'));
             } else if (msg.type === 'CAMERA_DISCONNECTED' || msg.type === 'CAMERA_RECONNECTED') {
@@ -345,6 +352,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   // 1-Click Laptop Webcam Connection Helper
   const connectLaptopWebcam = async (deviceIndex: number = 0, roomName: string = 'Server Room'): Promise<Camera> => {
     const payload: CameraConnectPayload = {
+      camera_id: 'CAM-LAPTOP',
       name: `Laptop Integrated Webcam (Device #${deviceIndex})`,
       building: activeBuilding,
       floor: activeFloor,
@@ -354,7 +362,9 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
       device_index: deviceIndex,
       ai_models: ['YOLOv8', 'CentroidTracker', 'HUDAnnotator']
     };
-    return await connectCamera(payload);
+    const cam = await connectCamera(payload);
+    setSelectedCameraId(cam.camera_id);
+    return cam;
   };
 
   // 1-Click Mobile Phone Camera Connection Helper

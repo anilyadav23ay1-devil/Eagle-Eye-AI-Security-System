@@ -2,9 +2,26 @@ import cv2
 import numpy as np
 import time
 import math
+import base64
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Any
 from models.schemas import RoomZone, Point2D
+
+def frame_crop_to_base64(crop: np.ndarray) -> str:
+    """Converts optical image crop to standard Base64 JPEG Data URL for instant web rendering."""
+    if crop is None or crop.size == 0:
+        return ""
+    try:
+        # Resize to standard badge avatar dimensions
+        h, w = crop.shape[:2]
+        if w > 0 and h > 0:
+            resized = cv2.resize(crop, (280, 280))
+            ret, buf = cv2.imencode('.jpg', resized, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            if ret:
+                return "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode('utf-8')
+    except Exception:
+        pass
+    return ""
 
 class DetectedObject:
     def __init__(self, track_id: str, bbox: Tuple[int, int, int, int], confidence: float, class_name: str = "person"):
@@ -14,8 +31,9 @@ class DetectedObject:
         self.class_name = class_name
         self.matched_person_id: Optional[str] = None
         self.matched_name: Optional[str] = None
-        self.is_authorized: bool = True
+        self.is_authorized: bool = False  # Default to unknown until verified against DB
         self.face_crop: Optional[np.ndarray] = None
+        self.photo_base64: str = ""
         self.dominant_colors: List[str] = []
         self.current_zone: Optional[str] = None
         self.zone_entry_time: float = time.time()
@@ -107,15 +125,12 @@ class CentroidTracker:
 
 class AIVisionEngine:
     def __init__(self):
-        # 1. Background Subtractor for high-precision real-time motion & person silhouette extraction
         self.bg_subtractors: Dict[str, Any] = {}
-
-        # 2. Multi-Camera Centroid Trackers
         self.trackers: Dict[str, CentroidTracker] = {}
         self.tracked_objects: Dict[str, Dict[str, DetectedObject]] = {}
 
     def process_frame(self, camera_id: str, frame: np.ndarray, rooms_on_floor: List[RoomZone] = None) -> Tuple[np.ndarray, List[DetectedObject]]:
-        """Processes real video frame: Optical motion detection, bounding box extraction, spatial room mapping, and HUD overlay."""
+        """Processes real video frame: Optical motion detection, bounding box extraction, face/body photo capture, and HUD overlay."""
         if frame is None or frame.size == 0:
             return frame, []
 
@@ -123,28 +138,23 @@ class AIVisionEngine:
         detected_rects = []
         confidences = []
 
-        # Initialize background subtractor per camera stream
         if camera_id not in self.bg_subtractors:
             self.bg_subtractors[camera_id] = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=25, detectShadows=True)
 
         bg_sub = self.bg_subtractors[camera_id]
         fg_mask = bg_sub.apply(frame)
 
-        # Morphological filtering to remove optical sensor noise and fill body silhouettes
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
         fg_mask = cv2.dilate(fg_mask, kernel, iterations=2)
 
-        # Find contours representing human body silhouettes
         contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         for cnt in contours:
             area = cv2.contourArea(cnt)
-            # Filter out tiny noise and gigantic full-screen changes
             if 1500 < area < (w * h * 0.75):
                 x, y, bw, bh = cv2.boundingRect(cnt)
                 aspect_ratio = bh / float(bw)
-                # Typical human standing/walking aspect ratio >= 1.0 or significant body area
                 if aspect_ratio >= 0.8 or area > 3500:
                     x1 = max(0, x - 10)
                     y1 = max(0, y - 10)
@@ -154,7 +164,6 @@ class AIVisionEngine:
                     conf = min(0.96, max(0.65, area / 15000.0 + 0.6))
                     confidences.append(conf)
 
-        # Update multi-object tracker
         if camera_id not in self.trackers:
             self.trackers[camera_id] = CentroidTracker()
             self.tracked_objects[camera_id] = {}
@@ -174,20 +183,24 @@ class AIVisionEngine:
                 d = math.hypot(cent[0] - cx, cent[1] - cy)
                 if d < min_dist and d < 80:
                     min_dist = d
-                    best_track_id = f"TRK-{tid:04d}"
+                    best_track_id = f"TRK-2025-{tid:04d}"
 
             if not best_track_id:
-                best_track_id = f"TRK-{abs(hash((cx, cy, time.time()))) % 10000:04d}"
+                best_track_id = f"TRK-2025-{abs(hash((cx, cy, time.time()))) % 10000:04d}"
 
             conf = confidences[i] if i < len(confidences) else 0.88
             obj = DetectedObject(track_id=best_track_id, bbox=rect, confidence=conf)
 
-            # Analyze Torso Clothing Color
+            # Capture Face / Upper Body Crop
             person_crop = frame[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
             if person_crop.size > 0:
+                # Capture upper 50% for headshot profile
+                crop_h = person_crop.shape[0]
+                headshot_crop = person_crop[0:int(crop_h * 0.6), :] if crop_h > 40 else person_crop
+                obj.face_crop = headshot_crop
+                obj.photo_base64 = frame_crop_to_base64(headshot_crop)
                 obj.dominant_colors = self._extract_clothing_color(person_crop)
-                obj.matched_name = f"Subject #{best_track_id}"
-                obj.is_authorized = True
+                obj.matched_name = f"Unknown Target [{best_track_id}]"
 
             # Map pixel position to room zones
             if rooms_on_floor:
@@ -201,7 +214,6 @@ class AIVisionEngine:
             current_detected_objects.append(obj)
             self.tracked_objects[camera_id][best_track_id] = obj
 
-        # Render Cyber HUD Annotations
         annotated_frame = self._render_hud_overlays(frame.copy(), current_detected_objects)
 
         return annotated_frame, current_detected_objects
