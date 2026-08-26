@@ -1,4 +1,5 @@
 import time
+import math
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional
 from models.schemas import (
@@ -109,16 +110,14 @@ class SecurityRulesEngine:
                             )
                             generated_alerts.append(alert)
 
-        # 3. Evaluate Tailgating at Access Turnstiles
+        # 3. Evaluate Tailgating at Access Portals
         if AlertType.TAILGATING in rules_by_type:
-            # Check if multiple distinct tracks entered close together
             if len(detected_objects) >= 2:
                 cooldown_key = f"tailgate-{camera_id}"
                 if now - self.active_alert_cooldowns.get(cooldown_key, 0) > 60.0:
-                    # Check distance between multiple detections
                     obj1, obj2 = detected_objects[0], detected_objects[1]
                     dist = math.hypot(obj1.centroid[0] - obj2.centroid[0], obj1.centroid[1] - obj2.centroid[1])
-                    if dist < 80:  # Within close physical proximity at entryway
+                    if dist < 80:  # Physical proximity threshold at doorway
                         self.active_alert_cooldowns[cooldown_key] = now
                         alert = SecurityAlert(
                             id=f"alt-{int(now * 1000)}",
@@ -137,6 +136,39 @@ class SecurityRulesEngine:
                             person_name="Multiple Subjects",
                             status=AlertStatus.ACTIVE,
                             guard_notes="Automated tailgating optical tripwire."
+                        )
+                        generated_alerts.append(alert)
+
+        # 4. Evaluate Room Overcrowding / Maximum Capacity
+        if AlertType.OVERCROWDING in rules_by_type:
+            zone_counts: Dict[str, int] = {}
+            for obj in detected_objects:
+                if obj.current_zone:
+                    zone_counts[obj.current_zone] = zone_counts.get(obj.current_zone, 0) + 1
+
+            for zone_name, count in zone_counts.items():
+                matched_room = next((r for r in rooms if r.name == zone_name), None)
+                if matched_room and matched_room.max_capacity > 0 and count > matched_room.max_capacity:
+                    cooldown_key = f"capacity-{zone_name}"
+                    if now - self.active_alert_cooldowns.get(cooldown_key, 0) > 60.0:
+                        self.active_alert_cooldowns[cooldown_key] = now
+                        alert = SecurityAlert(
+                            id=f"alt-{int(now * 1000)}",
+                            alert_id=f"ALT-{datetime.now().strftime('%Y%m%d')}-{len(self.active_alert_cooldowns):04d}",
+                            timestamp=now_str,
+                            severity=AlertSeverity.MEDIUM,
+                            type=AlertType.OVERCROWDING,
+                            title=f"Room Capacity Exceeded — {zone_name}",
+                            description=f"Zone {zone_name} has {count} occupants (max limit: {matched_room.max_capacity}).",
+                            building=building_name,
+                            floor=floor_name,
+                            room=zone_name,
+                            camera_id=camera_id,
+                            person_id="MULTIPLE",
+                            track_id=f"COUNT-{count}",
+                            person_name=f"{count} Occupants",
+                            status=AlertStatus.ACTIVE,
+                            guard_notes="Automated capacity threshold sensor."
                         )
                         generated_alerts.append(alert)
 

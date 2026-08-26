@@ -32,6 +32,7 @@ class AlertType(str, Enum):
     UNKNOWN_PERSON = "Unknown Person Detected"
     LOITERING = "Loitering Detected"
     EXPIRED_PERMISSION = "Permission Expired"
+    OVERCROWDING = "Overcrowding Detected"
 
 class AlertStatus(str, Enum):
     ACTIVE = "Active"

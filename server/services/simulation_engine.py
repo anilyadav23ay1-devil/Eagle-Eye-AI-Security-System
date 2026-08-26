@@ -20,6 +20,7 @@ from database.db import db_manager
 from services.camera_streamer import camera_streamer
 from services.ai_vision_engine import ai_vision_engine
 from services.face_recognition_service import face_service
+from services.appearance_engine import appearance_engine
 from services.rules_engine import rules_engine
 from seed_data.initial_state import (
     INITIAL_PERSONS, INITIAL_APPEARANCES, INITIAL_TIMELINES,
