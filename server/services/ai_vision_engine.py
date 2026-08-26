@@ -3,16 +3,16 @@ import numpy as np
 import time
 import math
 import base64
-from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Any
 from models.schemas import RoomZone, Point2D
+from services.detection_engine import detection_engine
+from services.face_recognition_service import face_service
 
 def frame_crop_to_base64(crop: np.ndarray) -> str:
-    """Converts optical image crop to standard Base64 JPEG Data URL for instant web rendering."""
+    """Converts optical image crop to standard Base64 JPEG Data URL for web display."""
     if crop is None or crop.size == 0:
         return ""
     try:
-        # Resize to standard badge avatar dimensions
         h, w = crop.shape[:2]
         if w > 0 and h > 0:
             resized = cv2.resize(crop, (280, 280))
@@ -31,7 +31,8 @@ class DetectedObject:
         self.class_name = class_name
         self.matched_person_id: Optional[str] = None
         self.matched_name: Optional[str] = None
-        self.is_authorized: bool = False  # Default to unknown until verified against DB
+        self.role: str = "Unknown"
+        self.is_authorized: bool = False
         self.face_crop: Optional[np.ndarray] = None
         self.photo_base64: str = ""
         self.dominant_colors: List[str] = []
@@ -125,44 +126,26 @@ class CentroidTracker:
 
 class AIVisionEngine:
     def __init__(self):
-        self.bg_subtractors: Dict[str, Any] = {}
         self.trackers: Dict[str, CentroidTracker] = {}
         self.tracked_objects: Dict[str, Dict[str, DetectedObject]] = {}
 
-    def process_frame(self, camera_id: str, frame: np.ndarray, rooms_on_floor: List[RoomZone] = None) -> Tuple[np.ndarray, List[DetectedObject]]:
-        """Processes real video frame: Optical motion detection, bounding box extraction, face/body photo capture, and HUD overlay."""
+    def process_frame(
+        self,
+        camera_id: str,
+        frame: np.ndarray,
+        rooms_on_floor: List[RoomZone] = None,
+        persons_db: Dict[str, Any] = None
+    ) -> Tuple[np.ndarray, List[DetectedObject]]:
+        """Executes full Phase 2 deep AI pipeline: Detection, Centroid Tracking, ArcFace Biometrics, and HUD Rendering."""
         if frame is None or frame.size == 0:
             return frame, []
 
         h, w = frame.shape[:2]
-        detected_rects = []
-        confidences = []
 
-        if camera_id not in self.bg_subtractors:
-            self.bg_subtractors[camera_id] = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=25, detectShadows=True)
-
-        bg_sub = self.bg_subtractors[camera_id]
-        fg_mask = bg_sub.apply(frame)
-
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
-        fg_mask = cv2.dilate(fg_mask, kernel, iterations=2)
-
-        contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        for cnt in contours:
-            area = cv2.contourArea(cnt)
-            if 1500 < area < (w * h * 0.75):
-                x, y, bw, bh = cv2.boundingRect(cnt)
-                aspect_ratio = bh / float(bw)
-                if aspect_ratio >= 0.8 or area > 3500:
-                    x1 = max(0, x - 10)
-                    y1 = max(0, y - 10)
-                    x2 = min(w, x + bw + 10)
-                    y2 = min(h, y + bh + 10)
-                    detected_rects.append((x1, y1, x2, y2))
-                    conf = min(0.96, max(0.65, area / 15000.0 + 0.6))
-                    confidences.append(conf)
+        # 1. Run Person Detection
+        raw_detections = detection_engine.detect_persons(frame)
+        detected_rects = [(b[0], b[1], b[2], b[3]) for b in raw_detections]
+        confidences = [b[4] for b in raw_detections]
 
         if camera_id not in self.trackers:
             self.trackers[camera_id] = CentroidTracker()
@@ -191,18 +174,31 @@ class AIVisionEngine:
             conf = confidences[i] if i < len(confidences) else 0.88
             obj = DetectedObject(track_id=best_track_id, bbox=rect, confidence=conf)
 
-            # Capture Face / Upper Body Crop
-            person_crop = frame[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
-            if person_crop.size > 0:
-                # Capture upper 50% for headshot profile
-                crop_h = person_crop.shape[0]
-                headshot_crop = person_crop[0:int(crop_h * 0.6), :] if crop_h > 40 else person_crop
-                obj.face_crop = headshot_crop
-                obj.photo_base64 = frame_crop_to_base64(headshot_crop)
-                obj.dominant_colors = self._extract_clothing_color(person_crop)
-                obj.matched_name = f"Unknown Target [{best_track_id}]"
+            # 2. Extract crops
+            face_crop, torso_crop = detection_engine.extract_crops(frame, rect)
+            obj.face_crop = face_crop
+            obj.photo_base64 = frame_crop_to_base64(face_crop)
+            obj.dominant_colors = self._extract_clothing_color(torso_crop)
 
-            # Map pixel position to room zones
+            # 3. ArcFace Biometric Recognition Matching
+            if persons_db:
+                match_result = face_service.match_face(face_crop, persons_db)
+                if match_result["is_match"]:
+                    obj.matched_person_id = match_result["person_id"]
+                    obj.matched_name = match_result["name"]
+                    obj.role = match_result["role"]
+                    obj.is_authorized = True
+                    obj.confidence = max(conf, match_result["confidence"])
+                else:
+                    obj.matched_name = f"Unknown Subject [{best_track_id}]"
+                    obj.role = "Unknown"
+                    obj.is_authorized = False
+            else:
+                obj.matched_name = f"Tracked Person [{best_track_id}]"
+                obj.role = "Visitor"
+                obj.is_authorized = True
+
+            # 4. Map spatial coordinate to room zones
             if rooms_on_floor:
                 norm_x = (cx / w) * 100
                 norm_y = (cy / h) * 100
@@ -215,42 +211,52 @@ class AIVisionEngine:
             self.tracked_objects[camera_id][best_track_id] = obj
 
         annotated_frame = self._render_hud_overlays(frame.copy(), current_detected_objects)
-
         return annotated_frame, current_detected_objects
 
-    def _extract_clothing_color(self, person_crop: np.ndarray) -> List[str]:
-        """Extracts dominant clothing colors from the torso area."""
-        h, w = person_crop.shape[:2]
-        torso = person_crop[int(h * 0.25):int(h * 0.75), :]
-        if torso.size == 0:
-            return ["Dark Attire"]
+    def _extract_clothing_color(self, torso_crop: np.ndarray) -> List[str]:
+        """Extracts dominant clothing colors from the torso region."""
+        if torso_crop is None or torso_crop.size == 0:
+            return ["Corporate Attire"]
 
-        hsv = cv2.cvtColor(torso, cv2.COLOR_BGR2HSV)
-        avg_h = np.mean(hsv[:, :, 0])
-        avg_s = np.mean(hsv[:, :, 1])
-        avg_v = np.mean(hsv[:, :, 2])
+        try:
+            hsv = cv2.cvtColor(torso_crop, cv2.COLOR_BGR2HSV)
+            avg_h = np.mean(hsv[:, :, 0])
+            avg_s = np.mean(hsv[:, :, 1])
+            avg_v = np.mean(hsv[:, :, 2])
 
-        if avg_v < 60:
-            return ["Black / Dark Formal"]
-        elif avg_s < 40 and avg_v > 180:
-            return ["White / Light Formal"]
-        elif 90 <= avg_h <= 130:
-            return ["Blue / Navy Jacket"]
-        elif 35 <= avg_h <= 85:
-            return ["Green / Olive"]
-        elif 0 <= avg_h <= 20:
-            return ["Red / Orange"]
-        return ["Casual Attire"]
+            if avg_v < 55:
+                return ["Black / Dark Suit"]
+            elif avg_s < 35 and avg_v > 180:
+                return ["White / Light Formal"]
+            elif 90 <= avg_h <= 130:
+                return ["Navy Blue Jacket"]
+            elif 35 <= avg_h <= 85:
+                return ["Olive / Green Attire"]
+            elif 0 <= avg_h <= 20:
+                return ["Red / Orange Top"]
+            return ["Standard Attire"]
+        except Exception:
+            return ["Standard Attire"]
 
     def _render_hud_overlays(self, frame: np.ndarray, detections: List[DetectedObject]) -> np.ndarray:
         """Draws neon HUD bounding boxes, target tokens, and AI confidence badges."""
         for obj in detections:
             x1, y1, x2, y2 = obj.bbox
-            is_alert = not obj.is_authorized
-            color = (0, 0, 255) if is_alert else (0, 235, 255)
+            is_auth = obj.is_authorized
+            
+            # Color coding: Green for Employee/Authorized, Purple for VIP/Visitor, Red for Unknown/Breach
+            if not is_auth:
+                color = (0, 0, 255)       # Red
+            elif obj.role == "Employee":
+                color = (0, 235, 120)     # Emerald Green
+            elif obj.role == "VIP":
+                color = (255, 120, 220)   # Neon Purple
+            else:
+                color = (255, 190, 0)     # Cyan / Sky
+
             thickness = 2
 
-            # Corner brackets
+            # Neon Corner Brackets
             d = 16
             cv2.line(frame, (x1, y1), (x1 + d, y1), color, thickness)
             cv2.line(frame, (x1, y1), (x1, y1 + d), color, thickness)
@@ -267,18 +273,19 @@ class AIVisionEngine:
             cv2.addWeighted(overlay, 0.08, frame, 0.92, 0, frame)
 
             # Top Badge Header
-            badge_text = f"{obj.matched_name or obj.track_id} [{int(obj.confidence * 100)}%]"
+            prefix = "✓ " if is_auth else "⚠ "
+            badge_text = f"{prefix}{obj.matched_name} [{int(obj.confidence * 100)}%]"
             cv2.rectangle(frame, (x1, max(0, y1 - 24)), (x1 + len(badge_text) * 9 + 10, y1), (15, 23, 42), -1)
             cv2.rectangle(frame, (x1, max(0, y1 - 24)), (x1 + len(badge_text) * 9 + 10, y1), color, 1)
-            cv2.putText(frame, badge_text, (x1 + 5, y1 - 7), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+            cv2.putText(frame, badge_text, (x1 + 5, y1 - 7), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (255, 255, 255), 1)
 
             # Bottom Zone & Attire Pill
-            bottom_text = f"{obj.dominant_colors[0] if obj.dominant_colors else 'Standard'} | {obj.current_zone or 'Zone A'}"
+            bottom_text = f"{obj.dominant_colors[0]} | {obj.current_zone or 'Zone A'}"
             cv2.rectangle(frame, (x1, y2), (x1 + len(bottom_text) * 7 + 8, y2 + 18), (15, 23, 42), -1)
             cv2.putText(frame, bottom_text, (x1 + 4, y2 + 13), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (56, 189, 248), 1)
 
         # AI Watermark
-        cv2.putText(frame, f"EAGLE EYE AI CORE :: {len(detections)} TARGETS TRACKED", (15, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 200), 1)
+        cv2.putText(frame, f"EAGLE EYE AI CORE 2.0 :: {len(detections)} TARGETS ACTIVE", (15, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 200), 1)
         return frame
 
 ai_vision_engine = AIVisionEngine()
