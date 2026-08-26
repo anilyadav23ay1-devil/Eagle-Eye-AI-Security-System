@@ -10,6 +10,7 @@ import { SecurityRulesManager } from './components/rules/SecurityRulesManager';
 import { CameraMatrixView } from './components/cameras/CameraMatrixView';
 import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
 import { BlueprintStudio } from './components/blueprint/BlueprintStudio';
+import { PersonEnrollmentView } from './components/enrollment/PersonEnrollmentView';
 import { EnrollmentModal } from './components/enrollment/EnrollmentModal';
 import { ConnectCameraModal } from './components/cameras/ConnectCameraModal';
 
@@ -34,17 +35,7 @@ const AppContent: React.FC = () => {
             {activeTab === 'blueprint' && <BlueprintStudio />}
             {activeTab === 'tracking' && <PersonTrackingView />}
             {activeTab === 'appearance' && <DailyAppearanceVault />}
-            {activeTab === 'enrollment' && (
-              <div className="space-y-6">
-                <div className="glass-panel rounded-2xl p-6 border border-slate-800 text-center space-y-4">
-                  <h2 className="text-xl font-bold text-white">Person Enrollment & Visitor Portal</h2>
-                  <p className="text-sm text-slate-400 max-w-lg mx-auto">
-                    Register first-time visitors, permanent employees, or contractors. Biometric optical vectors and track IDs are generated automatically.
-                  </p>
-                </div>
-                <EnrollmentModal />
-              </div>
-            )}
+            {activeTab === 'enrollment' && <PersonEnrollmentView />}
             {activeTab === 'rules' && <SecurityRulesManager />}
             {activeTab === 'cameras' && <CameraMatrixView />}
             {activeTab === 'analytics' && <AnalyticsDashboard />}

@@ -36,6 +36,16 @@ export const InteractiveFloorMap: React.FC<InteractiveFloorMapProps> = ({
     return true;
   });
 
+  const visibleCameras = cameras.filter(cam => 
+    (!cam.floor || cam.floor === activeFloor) &&
+    (!cam.building || cam.building === activeBuilding)
+  );
+
+  const visiblePersons = filteredPersons.filter(p => 
+    (!p.current_floor || p.current_floor === activeFloor) &&
+    (!p.current_building || p.current_building === activeBuilding)
+  );
+
   const handleRoomClick = (room: RoomZone) => {
     setSelectedRoomId(room.id);
   };
@@ -335,7 +345,7 @@ export const InteractiveFloorMap: React.FC<InteractiveFloorMapProps> = ({
             )}
 
             {/* Cameras with Visual FOV Cones */}
-            {cameras.map((cam) => (
+            {visibleCameras.map((cam) => (
               <div
                 key={cam.id}
                 onClick={() => setSelectedCameraId(cam.camera_id)}
@@ -355,7 +365,7 @@ export const InteractiveFloorMap: React.FC<InteractiveFloorMapProps> = ({
             ))}
 
             {/* Moving Person Avatars */}
-            {filteredPersons.map((p) => {
+            {visiblePersons.map((p) => {
               const isSelected = p.person_id === selectedPersonId;
               const isAlert = p.status === 'Alert';
               const isVisitor = p.role === 'Visitor';

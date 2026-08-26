@@ -38,7 +38,7 @@ interface SecurityContextType {
   setIsEnrollModalOpen: (open: boolean) => void;
   setIsConnectCamModalOpen: (open: boolean) => void;
   triggerUnknownPersonPrompt: () => void;
-  enrollPerson: (data: any) => Promise<void>;
+  enrollPerson: (data: any) => Promise<Person | null>;
   resolveAlert: (alertId: string, notes: string) => Promise<void>;
   simulateAlert: (type: AlertType, roomName?: string) => Promise<void>;
   // Camera Actions
@@ -420,7 +420,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
     playAlertSound('Medium');
   };
 
-  const enrollPerson = async (formData: any) => {
+  const enrollPerson = async (formData: any): Promise<Person | null> => {
     const res = await fetch('http://localhost:8000/api/persons/enroll', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -429,7 +429,9 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
     if (res.ok) {
       const enrolled = await res.json();
       setPersons(prev => upsertItem(prev, enrolled, 'person_id'));
+      return enrolled;
     }
+    return null;
   };
 
   const resolveAlert = async (alertId: string, notes: string) => {

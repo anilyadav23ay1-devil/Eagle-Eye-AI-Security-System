@@ -1,12 +1,19 @@
 import React from 'react';
-import { History, Sparkles, AlertCircle, Calendar, Clock, CheckCircle2, User } from 'lucide-react';
+import { History, Sparkles, AlertCircle, Calendar, Clock, CheckCircle2, User, Camera, ShieldCheck } from 'lucide-react';
 import { useSecurity } from '../../context/SecurityContext';
 
 export const DailyAppearanceVault: React.FC = () => {
-  const { selectedPerson, persons } = useSecurity();
+  const { selectedPerson, setSelectedPersonId, persons } = useSecurity();
   const person = selectedPerson || persons[0];
 
   const historicalSnapshots = [
+    {
+      date: '24 Aug 2025 (Today)',
+      time: '09:42 AM',
+      photo: person?.today_appearance_url || person?.photo_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&h=300&fit=crop&crop=face',
+      outfit: 'Standard Corporate / Navy Attire',
+      verified: true
+    },
     {
       date: '23 Aug 2025',
       time: '09:38 AM',
@@ -52,14 +59,26 @@ export const DailyAppearanceVault: React.FC = () => {
                 AI Re-Identification
               </span>
             </h2>
-            <p className="text-xs text-slate-400">
-              Tracking visual look changes, daily wardrobe variations, and biometric consistency
+            <p className="text-xs text-slate-400 font-mono">
+              Tracking visual wardrobe variations, daily attire changes, and biometric vector consistency
             </p>
           </div>
         </div>
 
+        {/* Person Selector Dropdown */}
         <div className="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 font-mono text-xs text-slate-300">
-          <span>Selected: <strong className="text-sky-400">{person?.name} ({person?.person_id})</strong></span>
+          <span className="text-slate-400 font-semibold">Inspect Person:</span>
+          <select
+            value={person?.person_id}
+            onChange={(e) => setSelectedPersonId(e.target.value)}
+            className="bg-slate-800 border border-slate-700 text-sky-400 font-bold rounded-lg px-2.5 py-1 focus:outline-none focus:border-sky-500"
+          >
+            {persons.map(p => (
+              <option key={p.person_id} value={p.person_id}>
+                {p.name} ({p.person_id} - {p.role})
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -70,10 +89,11 @@ export const DailyAppearanceVault: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <span className="text-[10px] uppercase font-mono font-bold text-sky-400">REFERENCE STANDARD</span>
-              <h3 className="text-base font-bold text-white">Primary Identity Photo</h3>
-              <p className="text-xs text-slate-400">Master enrollment photograph used for biometric verification</p>
+              <h3 className="text-base font-bold text-white">Primary Master Identity Photo</h3>
+              <p className="text-xs text-slate-400">Master enrollment photograph used for biometric facial verification</p>
             </div>
-            <span className="text-xs font-mono px-2.5 py-1 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/30 font-bold">
+            <span className="text-xs font-mono px-2.5 py-1 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/30 font-bold flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5" />
               VERIFIED
             </span>
           </div>
@@ -86,8 +106,19 @@ export const DailyAppearanceVault: React.FC = () => {
                 className="w-full h-full object-cover"
               />
               <div className="absolute bottom-0 inset-x-0 bg-black/70 p-2 text-center text-[10px] font-mono text-slate-200">
-                Enrolled: 24 Aug 2025
+                Master ID: {person?.person_id}
               </div>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1 text-xs font-mono">
+            <div className="flex justify-between text-slate-400">
+              <span>Biometric Vector:</span>
+              <span className="text-emerald-400 font-bold">ArcFace 512-D Valid</span>
+            </div>
+            <div className="flex justify-between text-slate-400">
+              <span>Security Clearance:</span>
+              <span className="text-sky-300 font-bold">{person?.role} Access Level</span>
             </div>
           </div>
         </div>
@@ -97,70 +128,59 @@ export const DailyAppearanceVault: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <span className="text-[10px] uppercase font-mono font-bold text-emerald-400">DYNAMIC OPTICAL CAPTURE</span>
-              <h3 className="text-base font-bold text-white">Today's Latest Appearance</h3>
-              <p className="text-xs text-slate-400">Auto-captured at CAM-001 Turnstile (24 Aug 2025 - 09:47 AM)</p>
+              <h3 className="text-base font-bold text-white">Today's Live Appearance Capture</h3>
+              <p className="text-xs text-slate-400">Optical camera ingestion recorded upon entry today</p>
             </div>
             <span className="text-xs font-mono px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> 98.6% MATCH
+              <Camera className="w-3.5 h-3.5" />
+              LIVE MATCH (98.4%)
             </span>
           </div>
 
           <div className="flex items-center justify-center p-4 rounded-xl bg-slate-950/60 border border-slate-800">
             <div className="relative w-48 h-56 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-xl shadow-emerald-500/10">
               <img
-                src={person?.today_appearance_url}
+                src={person?.today_appearance_url || person?.photo_url}
                 alt="Today's appearance"
                 className="w-full h-full object-cover"
               />
-              <div className="absolute bottom-0 inset-x-0 bg-black/70 p-2 text-center text-[10px] font-mono text-emerald-400 font-bold">
-                Navy Blue Oxford Shirt
+              <div className="absolute bottom-0 inset-x-0 bg-black/70 p-2 text-center text-[10px] font-mono text-emerald-300">
+                Captured: {person?.last_seen_time || '09:42 AM'} (CAM-001)
               </div>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1 text-xs font-mono">
+            <div className="flex justify-between text-slate-400">
+              <span>Current Attire:</span>
+              <span className="text-slate-200 font-bold">Standard Corporate Jacket</span>
+            </div>
+            <div className="flex justify-between text-slate-400">
+              <span>Last Location:</span>
+              <span className="text-sky-400">{person?.current_building} ({person?.current_room})</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Historical Appearance History Carousel / Cards */}
+      {/* Historical Look Timeline */}
       <div className="glass-panel rounded-2xl p-6 border border-slate-800 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-bold text-white">Appearance History Timeline</h3>
-            <p className="text-xs text-slate-400">Daily visual references captured over previous entries</p>
-          </div>
-          <span className="text-xs font-mono text-slate-400">{historicalSnapshots.length} Past Visits</span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {historicalSnapshots.map((item, index) => (
-            <div
-              key={index}
-              className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-purple-500/50 transition-all space-y-2.5"
-            >
-              <div className="w-full h-40 rounded-xl overflow-hidden border border-slate-700 bg-slate-950">
-                <img
-                  src={item.photo}
-                  alt={item.outfit}
-                  className="w-full h-full object-cover"
-                />
+        <h3 className="font-bold text-sm text-white">Historical Wardrobe & Look Timeline</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {historicalSnapshots.map((snap, idx) => (
+            <div key={idx} className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2.5">
+              <div className="relative aspect-square rounded-xl overflow-hidden border border-slate-700">
+                <img src={snap.photo} alt={snap.date} className="w-full h-full object-cover" />
+                <span className="absolute bottom-1 right-1 bg-black/80 text-[9px] font-mono px-1.5 py-0.5 rounded text-emerald-400">
+                  {snap.time}
+                </span>
               </div>
-
-              <div className="space-y-1 text-center">
-                <div className="text-xs font-bold text-white font-mono">{item.date}</div>
-                <div className="text-[10px] text-sky-400 font-mono">{item.time}</div>
-                <div className="text-[11px] text-slate-400 truncate" title={item.outfit}>
-                  {item.outfit}
-                </div>
+              <div>
+                <div className="text-xs font-bold text-white">{snap.date}</div>
+                <div className="text-[11px] text-slate-400 truncate">{snap.outfit}</div>
               </div>
             </div>
           ))}
-        </div>
-
-        {/* System Intelligence Note */}
-        <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center space-x-3 text-xs text-slate-400">
-          <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
-          <span>
-            <strong>AI Outfit Intelligence:</strong> System automatically registers daily appearance snapshots upon first camera acquisition each morning. If a significant mid-day wardrobe change is detected, an automated guard verification flag is raised.
-          </span>
         </div>
       </div>
     </div>

@@ -3,14 +3,33 @@ import { Building2, ArrowUpRight, ArrowDownRight, Layers, Users } from 'lucide-r
 import { useSecurity } from '../../context/SecurityContext';
 
 export const BuildingOccupancy3D: React.FC = () => {
-  const { stats, activeFloor, setActiveFloor } = useSecurity();
+  const { stats, activeFloor, setActiveFloor, activeBuilding, buildings } = useSecurity();
 
-  const floorData = [
-    { floor: 'Floor 4', name: 'Server Hub & Telecom', count: stats.floor_occupancies['Floor 4'] || 32, max: 40, color: 'from-purple-500 to-indigo-600', isRestricted: true },
-    { floor: 'Floor 3', name: 'Executive Suites', count: stats.floor_occupancies['Floor 3'] || 28, max: 50, color: 'from-blue-500 to-cyan-500', isRestricted: false },
-    { floor: 'Floor 2', name: 'Core Operations & Labs', count: stats.floor_occupancies['Floor 2'] || 38, max: 60, color: 'from-sky-400 to-blue-600', isRestricted: false },
-    { floor: 'Floor 1', name: 'Main Lobby & Reception', count: stats.floor_occupancies['Floor 1'] || 30, max: 80, color: 'from-emerald-400 to-teal-600', isRestricted: false },
+  const currentBldg = buildings.find(b => b.name === activeBuilding || b.id === activeBuilding) || buildings[0];
+  const bldgFloors = currentBldg?.floors || [];
+
+  const defaultColors = [
+    'from-emerald-400 to-teal-600',
+    'from-sky-400 to-blue-600',
+    'from-blue-500 to-cyan-500',
+    'from-purple-500 to-indigo-600',
+    'from-amber-500 to-orange-600'
   ];
+
+  const floorData = bldgFloors.map((f, i) => {
+    const floorOccupancy = stats.floor_occupancies[f.floor_name] || (f.rooms.reduce((acc, r) => acc + r.current_occupancy, 0)) || (30 - i * 4);
+    const maxCap = (f.rooms.reduce((acc, r) => acc + r.max_capacity, 0)) || (60 - i * 5);
+    const isRestricted = f.rooms.some(r => r.is_restricted) || f.floor_number === 4;
+
+    return {
+      floor: f.floor_name,
+      name: f.floor_name === 'Floor 1' ? 'Main Lobby & Reception' : f.floor_name === 'Floor 2' ? 'Core Operations & Labs' : f.floor_name === 'Floor 3' ? 'Executive Suites' : f.floor_name === 'Floor 4' ? 'Server Hub & Telecom' : `${currentBldg?.name || 'Building'} Level ${f.floor_number}`,
+      count: floorOccupancy,
+      max: maxCap,
+      color: defaultColors[i % defaultColors.length],
+      isRestricted
+    };
+  }).reverse(); // Display top floor on top, ground floor at bottom
 
   return (
     <div className="glass-panel rounded-2xl p-5 border border-slate-800 space-y-4">
@@ -21,7 +40,9 @@ export const BuildingOccupancy3D: React.FC = () => {
           </div>
           <div>
             <h3 className="font-bold text-sm text-slate-100">Building Spatial Occupancy</h3>
-            <p className="text-xs text-slate-400">Corporate Tower A • 4 Active Levels</p>
+            <p className="text-xs text-slate-400">
+              {currentBldg?.name || 'Corporate Tower A'} • {bldgFloors.length} Active Levels
+            </p>
           </div>
         </div>
 
@@ -64,7 +85,7 @@ export const BuildingOccupancy3D: React.FC = () => {
                   }`}>
                     {f.floor}
                   </span>
-                  <span className="text-xs font-medium text-slate-300">{f.name}</span>
+                  <span className="text-xs font-medium text-slate-300 truncate max-w-[150px]">{f.name}</span>
                   {f.isRestricted && (
                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-800/60">
                       RESTRICTED
