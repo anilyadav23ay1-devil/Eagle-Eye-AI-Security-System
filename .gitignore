@@ -47,5 +47,9 @@ ENV/
 *.suo
 *.ntvs*
 *.njsproj
-*.sln
 *.sw?
+
+# Database
+*.db
+*.sqlite3
+server/data/

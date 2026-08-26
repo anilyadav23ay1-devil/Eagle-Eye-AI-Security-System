@@ -4,8 +4,9 @@ import threading
 import cv2
 import numpy as np
 from datetime import datetime
-from typing import Dict, Optional, Tuple, Generator
-from models.schemas import Camera, CameraBrand, StreamType, ConnectionStatus, CameraTestRequest, CameraConnectRequest
+from typing import Dict, Optional, Tuple, Generator, List
+from models.schemas import Camera, CameraBrand, StreamType, ConnectionStatus, CameraTestRequest, CameraConnectRequest, RoomZone
+from services.ai_vision_engine import ai_vision_engine
 
 # Optimize OpenCV for low-latency RTSP
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|fflags;nobuffer|max_delay;500000"
@@ -48,7 +49,6 @@ class CameraStreamManager:
         elif req.brand == CameraBrand.UNIVIEW:
             return f"rtsp://{auth}{ip}:{port}/unicast/c{ch}/s0/live"
         elif req.brand == CameraBrand.MOBILE_IP:
-            # IP Webcam / DroidCam
             http_port = req.port or 8080
             return f"http://{ip}:{http_port}/video"
         else:
@@ -61,7 +61,6 @@ class CameraStreamManager:
 
         try:
             if isinstance(source, int):
-                # On Windows, DirectShow helps initialize webcams fast
                 cap = cv2.VideoCapture(source, cv2.CAP_DSHOW if os.name == 'nt' else cv2.CAP_ANY)
             else:
                 cap = cv2.VideoCapture(str(source))
@@ -104,8 +103,6 @@ class CameraStreamManager:
     def start_camera(self, camera: Camera) -> bool:
         """Start reading from real camera stream in a low-latency thread."""
         camera_id = camera.camera_id
-
-        # Stop existing if running
         self.stop_camera(camera_id)
 
         source: str | int
@@ -141,15 +138,15 @@ class CameraStreamManager:
 
                 if not cap.isOpened():
                     camera.connection_status = ConnectionStatus.ERROR
-                    camera.last_error = f"Failed to open stream: {source}"
+                    camera.status = "Offline"
+                    camera.last_error = "Failed to open video source"
                     return
 
                 camera.connection_status = ConnectionStatus.CONNECTED
-                camera.last_connected_at = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
-                camera.last_error = None
+                camera.status = "Online"
 
-                frame_count = 0
-                t0 = time.time()
+                fps_count = 0
+                last_fps_time = time.time()
 
                 while self.running_flags.get(camera_id, False):
                     ret, frame = cap.read()
@@ -157,79 +154,72 @@ class CameraStreamManager:
                         time.sleep(0.05)
                         continue
 
-                    # Overwrite latest frame in memory
+                    # Update latest frame
                     with self._lock:
                         self.latest_frames[camera_id] = frame
 
-                    frame_count += 1
-                    if time.time() - t0 >= 1.0:
-                        camera.fps = frame_count
-                        frame_count = 0
-                        t0 = time.time()
+                    fps_count += 1
+                    if time.time() - last_fps_time >= 1.0:
+                        camera.fps = fps_count
+                        fps_count = 0
+                        last_fps_time = time.time()
+
+                    # Prevent buffer lag by brief sleep
+                    time.sleep(0.01)
 
                 cap.release()
             except Exception as e:
                 camera.connection_status = ConnectionStatus.ERROR
+                camera.status = "Offline"
                 camera.last_error = str(e)
-            finally:
-                camera.connection_status = ConnectionStatus.DISCONNECTED
 
-        thread = threading.Thread(target=_stream_reader, daemon=True, name=f"cam-{camera_id}")
-        self.stream_threads[camera_id] = thread
-        thread.start()
+        t = threading.Thread(target=_stream_reader, daemon=True)
+        self.stream_threads[camera_id] = t
+        t.start()
         return True
 
     def stop_camera(self, camera_id: str):
-        """Gracefully disconnect and release camera stream resources."""
+        """Stop background capture thread and release hardware resources."""
         self.running_flags[camera_id] = False
-        if camera_id in self.active_captures:
-            try:
-                self.active_captures[camera_id].release()
-            except Exception:
-                pass
-            self.active_captures.pop(camera_id, None)
-
-        if camera_id in self.stream_threads:
-            self.stream_threads.pop(camera_id, None)
-
         with self._lock:
-            self.latest_frames.pop(camera_id, None)
+            if camera_id in self.active_captures:
+                try:
+                    self.active_captures[camera_id].release()
+                except Exception:
+                    pass
+                del self.active_captures[camera_id]
+            if camera_id in self.latest_frames:
+                del self.latest_frames[camera_id]
 
     def generate_synthetic_frame(self, camera_id: str, camera_name: str, brand: str) -> np.ndarray:
-        """Generate high-tech HUD synthetic frame when camera is in simulated mode."""
+        """Generate animated cyber security HUD stream."""
         h, w = 480, 854
         frame = np.zeros((h, w, 3), dtype=np.uint8)
 
-        # Background gradient and grid
         for y in range(h):
             color = int(12 + (y / h) * 15)
             frame[y, :] = (color, color + 4, color + 10)
 
-        # Grid lines
         for x in range(0, w, 40):
             cv2.line(frame, (x, 0), (x, h), (30, 41, 59), 1)
         for y in range(0, h, 40):
             cv2.line(frame, (0, y), (w, y), (30, 41, 59), 1)
 
-        # Draw AI targeting box simulation
         cx, cy = int(w * 0.5 + np.sin(time.time() * 1.5) * 60), int(h * 0.5 + np.cos(time.time()) * 30)
         bw, bh = 140, 220
         x1, y1 = cx - bw // 2, cy - bh // 2
         x2, y2 = cx + bw // 2, cy + bh // 2
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), (56, 189, 248), 2)
-        # Corner marks
         cs = 15
         cv2.line(frame, (x1, y1), (x1 + cs, y1), (16, 185, 129), 3)
         cv2.line(frame, (x1, y1), (x1, y1 + cs), (16, 185, 129), 3)
         cv2.line(frame, (x2, y1), (x2 - cs, y1), (16, 185, 129), 3)
-        cv2.line(frame, (x2, y1), (x2, y1 + cs), (16, 185, 129), 3)
+        cv2.line(frame, (x2, y1), (x2 - cs, y1), (16, 185, 129), 3)
 
-        # Label tag
         cv2.rectangle(frame, (x1, y1 - 25), (x1 + 180, y1), (6, 95, 70), -1)
         cv2.putText(frame, "PERSON #10087 [98.4%]", (x1 + 5, y1 - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
 
-        # Top HUD bar
         cv2.rectangle(frame, (15, 15), (w - 15, 55), (15, 23, 42), -1)
         cv2.rectangle(frame, (15, 15), (w - 15, 55), (51, 65, 85), 1)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -238,28 +228,24 @@ class CameraStreamManager:
 
         return frame
 
-    def get_camera_frame(self, camera: Camera) -> np.ndarray:
-        """Get latest real frame or synthetic AI frame."""
+    def get_camera_frame(self, camera: Camera, rooms: List[RoomZone] = None) -> np.ndarray:
+        """Get processed frame with real AI computer vision annotations."""
         camera_id = camera.camera_id
 
         if camera.connection_status == ConnectionStatus.CONNECTED and camera_id in self.latest_frames:
             with self._lock:
-                frame = self.latest_frames[camera_id].copy()
+                raw_frame = self.latest_frames[camera_id].copy()
 
-            # Add HUD banner onto real camera frame
-            h, w = frame.shape[:2]
-            cv2.rectangle(frame, (10, 10), (w - 10, 45), (10, 15, 25), -1)
-            cv2.putText(frame, f"LIVE OPTICAL FEED | {camera.camera_id} ({camera.brand})", (20, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (56, 189, 248), 1)
-            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            cv2.putText(frame, now_str, (w - 200, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (16, 185, 129), 1)
-            return frame
+            # Run real AI Vision processing on frame
+            annotated_frame, detections = ai_vision_engine.process_frame(camera_id, raw_frame, rooms)
+            return annotated_frame
 
         return self.generate_synthetic_frame(camera_id, camera.name, camera.brand)
 
-    def get_mjpeg_stream(self, camera: Camera) -> Generator[bytes, None, None]:
+    def get_mjpeg_stream(self, camera: Camera, rooms: List[RoomZone] = None) -> Generator[bytes, None, None]:
         """Generate multipart JPEG stream for direct HTML <img> display."""
         while True:
-            frame = self.get_camera_frame(camera)
+            frame = self.get_camera_frame(camera, rooms)
             ret, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
             if ret:
                 yield (b'--frame\r\n'

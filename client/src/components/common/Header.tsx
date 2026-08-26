@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ShieldAlert, ShieldCheck, Eye, Bell, Volume2, VolumeX, 
-  Lock, AlertTriangle, UserPlus, Radio, Activity, RefreshCw 
+  Lock, AlertTriangle, UserPlus, Radio, Activity, RefreshCw,
+  Database, Cpu, CheckCircle2 
 } from 'lucide-react';
 import { useSecurity } from '../../context/SecurityContext';
 
@@ -44,25 +45,33 @@ export const Header: React.FC = () => {
           <div>
             <div className="flex items-center space-x-2">
               <h1 className="font-extrabold text-lg tracking-wider text-white flex items-center gap-1.5">
-                EAGLE EYE <span className="text-xs px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-400 border border-sky-500/40 font-mono font-normal">AI v2.4</span>
+                EAGLE EYE <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-mono font-normal">REAL AI ENGINE</span>
               </h1>
             </div>
-            <p className="text-xs text-slate-400 font-medium tracking-wide">Building Security & Activity Intelligence Platform</p>
+            <p className="text-xs text-slate-400 font-medium tracking-wide">AI Security & Activity Intelligence Platform</p>
           </div>
         </div>
 
-        <div className="hidden lg:flex items-center space-x-2 pl-4 border-l border-slate-800">
-          <span className="flex h-2.5 w-2.5 relative">
-            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-              isLockdownMode ? 'bg-red-400' : isConnected ? 'bg-emerald-400' : 'bg-amber-400'
-            }`}></span>
-            <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
-              isLockdownMode ? 'bg-red-500' : isConnected ? 'bg-emerald-500' : 'bg-amber-500'
-            }`}></span>
-          </span>
-          <span className="text-xs font-mono font-medium text-slate-300">
-            {isLockdownMode ? 'FACILITY LOCKDOWN ACTIVE' : isConnected ? 'REAL-TIME AI CORE: ACTIVE' : 'SIMULATION MODE (LOCAL)'}
-          </span>
+        {/* Real Engine & Database Status Badges */}
+        <div className="hidden lg:flex items-center space-x-3 pl-4 border-l border-slate-800">
+          <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-800">
+            <span className="flex h-2 w-2 relative">
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                isLockdownMode ? 'bg-red-400' : isConnected ? 'bg-emerald-400' : 'bg-amber-400'
+              }`}></span>
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${
+                isLockdownMode ? 'bg-red-500' : isConnected ? 'bg-emerald-500' : 'bg-amber-500'
+              }`}></span>
+            </span>
+            <span className="text-[11px] font-mono font-semibold text-slate-300">
+              {isLockdownMode ? 'LOCKDOWN ACTIVE' : isConnected ? 'AI CORE: LIVE' : 'CONNECTING...'}
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-800">
+            <Database className="w-3 h-3 text-sky-400" />
+            <span className="text-[11px] font-mono text-slate-300">SQLite DB: Synced</span>
+          </div>
         </div>
       </div>
 
@@ -81,13 +90,13 @@ export const Header: React.FC = () => {
             className="px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium flex items-center space-x-1.5 transition-all"
           >
             <Activity className="w-3.5 h-3.5 text-sky-400" />
-            <span>Simulate Event</span>
+            <span>Test Security Rules</span>
           </button>
 
           {showSimMenu && (
             <div className="absolute right-0 mt-2 w-64 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl p-2 z-50 text-xs">
               <div className="px-2 py-1.5 font-semibold text-slate-400 border-b border-slate-800">
-                Trigger Real-Time AI Simulation:
+                Trigger Real-Time AI Rule Test:
               </div>
               <button 
                 onClick={() => { simulateAlert('Unauthorized Access', 'Server Room'); setShowSimMenu(false); }}

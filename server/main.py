@@ -21,8 +21,8 @@ from services.camera_streamer import camera_streamer
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: launch simulation background task
-    sim_task = asyncio.create_task(engine.simulation_loop())
+    # Startup: launch Real AI Vision & Security Rules Engine background task
+    sim_task = asyncio.create_task(engine.live_ai_processing_loop())
     yield
     # Shutdown: stop simulation and camera streams
     engine.is_running = False
