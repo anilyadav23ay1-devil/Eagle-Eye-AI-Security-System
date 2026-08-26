@@ -1,13 +1,14 @@
 import React from 'react';
 import { 
   LayoutDashboard, Map, UserCheck, History, ShieldAlert, 
-  Camera, BarChart3, UserPlus, Sliders, Settings 
+  Camera, BarChart3, UserPlus, PenTool, Building2, Layers 
 } from 'lucide-react';
 import { useSecurity } from '../../context/SecurityContext';
 
 export type NavTab = 
   | 'dashboard' 
   | 'map' 
+  | 'blueprint'
   | 'tracking' 
   | 'appearance' 
   | 'enrollment' 
@@ -21,12 +22,13 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
-  const { alerts, stats } = useSecurity();
+  const { alerts, stats, activeBuilding } = useSecurity();
   const activeAlertsCount = alerts.filter(a => a.status === 'Active').length;
 
   const navItems = [
     { id: 'dashboard', label: 'Live Dashboard', icon: LayoutDashboard, badge: null },
     { id: 'map', label: '2D Floor Map', icon: Map, badge: `${stats.total_in_building}` },
+    { id: 'blueprint', label: 'Blueprint Studio', icon: PenTool, badge: 'CAD', badgeColor: 'bg-purple-600' },
     { id: 'tracking', label: 'Person Tracking', icon: UserCheck, badge: null },
     { id: 'appearance', label: 'Appearance Vault', icon: History, badge: 'AI' },
     { id: 'enrollment', label: 'Person Enrollment', icon: UserPlus, badge: stats.unknown > 0 ? `${stats.unknown}` : null, badgeColor: 'bg-purple-500' },
@@ -73,8 +75,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       {/* Facility Quick Stat Pill */}
       <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800/80 space-y-2">
         <div className="flex justify-between items-center text-xs">
-          <span className="text-slate-400">Active Building:</span>
-          <span className="font-semibold text-slate-200">Tower A</span>
+          <span className="text-slate-400">Active Facility:</span>
+          <span className="font-semibold text-slate-200 truncate max-w-[120px]">{activeBuilding}</span>
         </div>
         <div className="flex justify-between items-center text-xs">
           <span className="text-slate-400">Total Cameras:</span>

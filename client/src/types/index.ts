@@ -32,6 +32,74 @@ export type StreamType = 'RTSP' | 'HTTP/MJPEG' | 'ONVIF' | 'USB Local' | 'Simula
 
 export type ConnectionStatus = 'Connected' | 'Connecting' | 'Disconnected' | 'Error';
 
+export type BlueprintType = 'SVG' | 'Image' | 'PDF' | 'Custom Drawn';
+
+export type ShapeType = 'RECT' | 'POLYGON' | 'WALL_LINE' | 'DOOR' | 'CAMERA_NODE' | 'TEXT_LABEL' | 'FREEHAND';
+
+export interface Point2D {
+  x: number;
+  y: number;
+}
+
+export interface CanvasShape {
+  id: string;
+  type: ShapeType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  points: Point2D[];
+  label?: string;
+  stroke_color: string;
+  fill_color: string;
+  stroke_width: number;
+  is_restricted: boolean;
+  max_capacity: number;
+  allowed_roles: string[];
+}
+
+export interface RoomZone {
+  id: string;
+  name: string;
+  building: string;
+  floor: string;
+  max_capacity: number;
+  current_occupancy: number;
+  is_restricted: boolean;
+  allowed_roles: string[];
+  occupants: string[];
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  shape_type?: ShapeType;
+  points?: Point2D[];
+  color?: string;
+}
+
+export interface FloorProfile {
+  id: string;
+  floor_number: number;
+  floor_name: string;
+  building_id: string;
+  blueprint_url?: string;
+  blueprint_type: BlueprintType;
+  rooms: RoomZone[];
+  drawing_shapes?: CanvasShape[];
+  camera_ids?: string[];
+}
+
+export interface BuildingProfile {
+  id: string;
+  name: string;
+  code: string;
+  address: string;
+  total_floors: number;
+  floors: FloorProfile[];
+  description?: string;
+  created_at?: string;
+}
+
 export interface AppearanceSnapshot {
   id: string;
   person_id: string;
@@ -143,22 +211,6 @@ export interface CameraTestPayload {
   password?: string;
   channel?: number;
   device_index?: number;
-}
-
-export interface RoomZone {
-  id: string;
-  name: string;
-  building: string;
-  floor: string;
-  max_capacity: number;
-  current_occupancy: number;
-  is_restricted: boolean;
-  allowed_roles: string[];
-  occupants: string[];
-  x: number;
-  y: number;
-  width: number;
-  height: number;
 }
 
 export interface SecurityAlert {

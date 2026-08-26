@@ -66,6 +66,117 @@ class ConnectionStatus(str, Enum):
     DISCONNECTED = "Disconnected"
     ERROR = "Error"
 
+class BlueprintType(str, Enum):
+    SVG = "SVG"
+    IMAGE = "Image"
+    PDF = "PDF"
+    CUSTOM_DRAWN = "Custom Drawn"
+
+class ShapeType(str, Enum):
+    RECT = "RECT"
+    POLYGON = "POLYGON"
+    WALL_LINE = "WALL_LINE"
+    DOOR = "DOOR"
+    CAMERA_NODE = "CAMERA_NODE"
+    TEXT_LABEL = "TEXT_LABEL"
+    FREEHAND = "FREEHAND"
+
+class Point2D(BaseModel):
+    x: float
+    y: float
+
+class CanvasShape(BaseModel):
+    id: str
+    type: ShapeType
+    x: float = 0.0
+    y: float = 0.0
+    width: float = 0.0
+    height: float = 0.0
+    points: List[Point2D] = Field(default_factory=list)
+    label: Optional[str] = ""
+    stroke_color: str = "#38bdf8"
+    fill_color: str = "rgba(56, 189, 248, 0.15)"
+    stroke_width: float = 2.0
+    is_restricted: bool = False
+    max_capacity: int = 10
+    allowed_roles: List[str] = Field(default_factory=lambda: ["Employee", "Visitor"])
+
+class RoomZone(BaseModel):
+    id: str
+    name: str
+    building: str
+    floor: str
+    max_capacity: int
+    current_occupancy: int = 0
+    is_restricted: bool = False
+    allowed_roles: List[str] = Field(default_factory=list)
+    occupants: List[str] = Field(default_factory=list)
+    x: float
+    y: float
+    width: float
+    height: float
+    shape_type: ShapeType = ShapeType.RECT
+    points: List[Point2D] = Field(default_factory=list)
+    color: Optional[str] = "rgba(56, 189, 248, 0.15)"
+
+class FloorProfile(BaseModel):
+    id: str
+    floor_number: int
+    floor_name: str
+    building_id: str
+    blueprint_url: Optional[str] = None
+    blueprint_type: BlueprintType = BlueprintType.CUSTOM_DRAWN
+    rooms: List[RoomZone] = Field(default_factory=list)
+    drawing_shapes: List[CanvasShape] = Field(default_factory=list)
+    camera_ids: List[str] = Field(default_factory=list)
+
+class BuildingProfile(BaseModel):
+    id: str
+    name: str
+    code: str
+    address: str
+    total_floors: int
+    floors: List[FloorProfile] = Field(default_factory=list)
+    description: Optional[str] = ""
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+class BuildingCreateRequest(BaseModel):
+    name: str
+    code: str
+    address: str
+    total_floors: int = 4
+    description: Optional[str] = ""
+
+class FloorCreateRequest(BaseModel):
+    floor_number: int
+    floor_name: str
+    building_id: str
+    blueprint_url: Optional[str] = None
+    blueprint_type: Optional[BlueprintType] = BlueprintType.CUSTOM_DRAWN
+
+class RoomCreateRequest(BaseModel):
+    name: str
+    building: str
+    floor: str
+    max_capacity: int = 10
+    is_restricted: bool = False
+    allowed_roles: List[str] = Field(default_factory=lambda: ["Employee", "Visitor"])
+    x: float
+    y: float
+    width: float
+    height: float
+    shape_type: Optional[ShapeType] = ShapeType.RECT
+    points: Optional[List[Point2D]] = None
+    color: Optional[str] = None
+
+class BlueprintSaveRequest(BaseModel):
+    building_id: str
+    floor_id: str
+    blueprint_url: Optional[str] = None
+    blueprint_type: Optional[BlueprintType] = BlueprintType.CUSTOM_DRAWN
+    shapes: List[CanvasShape] = Field(default_factory=list)
+    rooms: List[RoomZone] = Field(default_factory=list)
+
 class AppearanceSnapshot(BaseModel):
     id: str
     person_id: str
@@ -84,7 +195,7 @@ class MovementEvent(BaseModel):
     building: str
     floor: str
     room: str
-    event_type: str = "ENTER"  # ENTER, TRANSIT, EXIT, ALERT
+    event_type: str = "ENTER"
     dwell_time_seconds: int = 0
 
 class Person(BaseModel):
@@ -121,7 +232,7 @@ class Camera(BaseModel):
     building: str
     floor: str
     room: str
-    status: str = "Online"  # Online, Degraded, Offline
+    status: str = "Online"
     connection_status: ConnectionStatus = ConnectionStatus.CONNECTED
     brand: CameraBrand = CameraBrand.SIMULATED
     stream_type: StreamType = StreamType.SIMULATED
@@ -172,21 +283,6 @@ class CameraTestRequest(BaseModel):
     password: Optional[str] = None
     channel: Optional[int] = 1
     device_index: Optional[int] = 0
-
-class RoomZone(BaseModel):
-    id: str
-    name: str
-    building: str
-    floor: str
-    max_capacity: int
-    current_occupancy: int = 0
-    is_restricted: bool = False
-    allowed_roles: List[str] = Field(default_factory=list)
-    occupants: List[str] = Field(default_factory=list)
-    x: float
-    y: float
-    width: float
-    height: float
 
 class SecurityAlert(BaseModel):
     id: str

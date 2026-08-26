@@ -3,7 +3,7 @@ import {
   Person, Camera, RoomZone, SecurityAlert, SecurityRule, 
   BuildingStats, AppearanceSnapshot, MovementEvent, PersonRole, AccessStatus, 
   AlertSeverity, AlertType, AlertStatus, CameraConnectPayload, CameraTestPayload,
-  CameraBrand, StreamType, ConnectionStatus
+  CameraBrand, StreamType, ConnectionStatus, BuildingProfile, FloorProfile, CanvasShape, BlueprintType
 } from '../types';
 
 interface SecurityContextType {
@@ -13,6 +13,7 @@ interface SecurityContextType {
   cameras: Camera[];
   alerts: SecurityAlert[];
   rules: SecurityRule[];
+  buildings: BuildingProfile[];
   selectedPerson: Person | null;
   selectedPersonId: string;
   selectedCamera: Camera | null;
@@ -46,6 +47,15 @@ interface SecurityContextType {
   reconnectCamera: (cameraId: string) => Promise<void>;
   deleteCamera: (cameraId: string) => Promise<void>;
   testCameraConnection: (payload: CameraTestPayload) => Promise<any>;
+  // Building & Blueprint Actions
+  createBuilding: (data: any) => Promise<BuildingProfile>;
+  deleteBuilding: (buildingId: string) => Promise<void>;
+  addFloor: (buildingId: string, data: any) => Promise<FloorProfile>;
+  deleteFloor: (buildingId: string, floorId: string) => Promise<void>;
+  addRoom: (data: any) => Promise<RoomZone>;
+  deleteRoom: (roomId: string) => Promise<void>;
+  uploadBlueprint: (file: File, buildingId: string, floorId: string) => Promise<any>;
+  saveBlueprint: (payload: any) => Promise<FloorProfile>;
 }
 
 const DEFAULT_STATS: BuildingStats = {
@@ -74,6 +84,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
   const [rules, setRules] = useState<SecurityRule[]>([]);
+  const [buildings, setBuildings] = useState<BuildingProfile[]>([]);
   
   const [selectedPersonId, setSelectedPersonId] = useState<string>('P-10087');
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>('CAM-021');
@@ -89,7 +100,6 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Audio chimes using Web Audio API
   const playAlertSound = (severity: AlertSeverity = 'High') => {
     if (!soundEnabled) return;
     try {
@@ -103,26 +113,22 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(880, audioCtx.currentTime);
         osc.frequency.setValueAtTime(440, audioCtx.currentTime + 0.15);
-        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.3);
         gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
         osc.start();
-        osc.stop(audioCtx.currentTime + 0.5);
+        osc.stop(audioCtx.currentTime + 0.4);
       } else {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
         osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.1);
         gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
         osc.start();
-        osc.stop(audioCtx.currentTime + 0.35);
+        osc.stop(audioCtx.currentTime + 0.3);
       }
-    } catch (e) {
-      console.warn('Audio play failed', e);
-    }
+    } catch (e) {}
   };
 
-  // Connect to WebSocket & REST
   useEffect(() => {
     let socket: WebSocket | null = null;
 
@@ -145,6 +151,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
               setCameras(msg.data.cameras);
               setAlerts(msg.data.alerts);
               setRules(msg.data.rules);
+              if (msg.data.buildings) setBuildings(msg.data.buildings);
             } else if (msg.type === 'TICK_UPDATE') {
               setStats(msg.data.stats);
               setPersons(msg.data.persons);
@@ -155,12 +162,6 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
               setAlerts(prev => prev.map(a => a.id === msg.data.id ? msg.data : a));
             } else if (msg.type === 'NEW_PERSON_ENROLLED') {
               setPersons(prev => [msg.data, ...prev]);
-              setStats(prev => ({
-                ...prev,
-                authorized: prev.authorized + 1,
-                unknown: Math.max(0, prev.unknown - 1),
-                entries_today: prev.entries_today + 1
-              }));
             } else if (msg.type === 'CAMERA_CONNECTED') {
               setCameras(prev => {
                 const idx = prev.findIndex(c => c.camera_id === msg.data.camera_id);
@@ -173,35 +174,43 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
               });
             } else if (msg.type === 'CAMERA_DISCONNECTED' || msg.type === 'CAMERA_RECONNECTED') {
               setCameras(prev => prev.map(c => c.camera_id === msg.data.camera_id ? msg.data : c));
-            } else if (msg.type === 'CAMERA_DELETED') {
-              setCameras(prev => prev.filter(c => c.camera_id !== msg.data.camera_id));
+            } else if (msg.type === 'BUILDING_CREATED') {
+              setBuildings(prev => [...prev, msg.data]);
+            } else if (msg.type === 'BUILDING_DELETED') {
+              setBuildings(prev => prev.filter(b => b.id !== msg.data.building_id));
+            } else if (msg.type === 'ROOM_CREATED') {
+              setRooms(prev => [...prev, msg.data]);
+            } else if (msg.type === 'ROOM_DELETED') {
+              setRooms(prev => prev.filter(r => r.id !== msg.data.room_id));
+            } else if (msg.type === 'BLUEPRINT_SAVED') {
+              setBuildings(prev => prev.map(b => ({
+                ...b,
+                floors: b.floors.map(f => f.id === msg.data.id ? msg.data : f)
+              })));
             }
-          } catch (err) {
-            console.error('Error parsing WS message:', err);
-          }
+          } catch (err) {}
         };
 
         socket.onclose = () => {
           setIsConnected(false);
           setTimeout(connectWs, 3000);
         };
-
-        socket.onerror = () => {
-          socket?.close();
-        };
       } catch (e) {
         setIsConnected(false);
-        setTimeout(connectWs, 3000);
       }
     };
 
     connectWs();
 
-    // Fetch HTTP backup
+    fetch('http://localhost:8000/api/buildings')
+      .then(r => r.json())
+      .then(b => setBuildings(b))
+      .catch(() => {});
+
     fetch('http://localhost:8000/api/cameras')
       .then(r => r.json())
       .then(cams => setCameras(cams))
-      .catch(() => setupLocalFallbackState());
+      .catch(() => {});
 
     fetch('http://localhost:8000/api/stats')
       .then(r => r.json())
@@ -213,67 +222,85 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
     };
   }, []);
 
-  const setupLocalFallbackState = () => {
-    // Initial fallback data
-    const defaultCameras: Camera[] = [
-      { id: 'cam-1', camera_id: 'CAM-001', name: 'Main Entrance Gate 1', building: 'Corporate Tower A', floor: 'Floor 1', room: 'Main Entrance', status: 'Online', connection_status: 'Connected', brand: 'Hikvision', stream_type: 'RTSP', stream_url: 'rtsp://admin:pass@192.168.1.101:554/live', is_real_camera: true, last_connected_at: '2025-08-24 09:30:00 AM', fps: 30, resolution: '4K UHD (3840x2160)', latency_ms: 16, ai_models: ['YOLOv8x', 'DeepFace'], fov_angle: 110, x_pos: 50, y_pos: 95 },
-      { id: 'cam-3', camera_id: 'CAM-003', name: 'Reception Desk & Turnstile', building: 'Corporate Tower A', floor: 'Floor 1', room: 'Reception', status: 'Online', connection_status: 'Connected', brand: 'Dahua', stream_type: 'RTSP', stream_url: 'rtsp://admin:pass@192.168.1.103:554/cam/realmonitor', is_real_camera: true, last_connected_at: '2025-08-24 09:30:00 AM', fps: 30, resolution: '4K UHD (3840x2160)', latency_ms: 18, ai_models: ['YOLOv8x', 'FaceNet'], fov_angle: 90, x_pos: 30, y_pos: 60 },
-      { id: 'cam-14', camera_id: 'CAM-014', name: 'Floor 2 North Corridor', building: 'Corporate Tower A', floor: 'Floor 2', room: 'Corridor', status: 'Online', connection_status: 'Connected', brand: 'Axis', stream_type: 'RTSP', stream_url: 'rtsp://admin:pass@192.168.1.114:554/axis-media/media.amp', is_real_camera: true, last_connected_at: '2025-08-24 09:30:00 AM', fps: 30, resolution: '1080p Full HD', latency_ms: 14, ai_models: ['YOLOv8n', 'ByteTrack'], fov_angle: 90, x_pos: 50, y_pos: 30 },
-      { id: 'cam-18', camera_id: 'CAM-018', name: 'Office 201 Internal', building: 'Corporate Tower A', floor: 'Floor 2', room: 'Office 201', status: 'Online', connection_status: 'Connected', brand: 'CP Plus', stream_type: 'RTSP', stream_url: 'rtsp://admin:pass@192.168.1.118:554/live', is_real_camera: true, last_connected_at: '2025-08-24 09:30:00 AM', fps: 25, resolution: '1080p Full HD', latency_ms: 19, ai_models: ['YOLOv8n', 'DeepFace'], fov_angle: 85, x_pos: 38, y_pos: 8 },
-      { id: 'cam-19', camera_id: 'CAM-019', name: 'Server Room Restricted Vault', building: 'Corporate Tower A', floor: 'Floor 2', room: 'Server Room', status: 'Online', connection_status: 'Connected', brand: 'Reolink', stream_type: 'RTSP', stream_url: 'rtsp://admin:pass@192.168.1.119:554/h264Preview_01_main', is_real_camera: true, last_connected_at: '2025-08-24 09:30:00 AM', fps: 30, resolution: '4K UHD (3840x2160)', latency_ms: 15, ai_models: ['YOLOv8x', 'DeepFace', 'AnomalyNet'], fov_angle: 120, x_pos: 8, y_pos: 60 },
-      { id: 'cam-21', camera_id: 'CAM-021', name: 'Executive Meeting Room A', building: 'Corporate Tower A', floor: 'Floor 2', room: 'Meeting Room', status: 'Online', connection_status: 'Connected', brand: 'Local USB / Built-in Webcam', stream_type: 'USB Local', device_index: 0, is_real_camera: true, last_connected_at: '2025-08-24 09:30:00 AM', fps: 30, resolution: '1080p Full HD', latency_ms: 17, ai_models: ['YOLOv8x', 'DeepFace'], fov_angle: 90, x_pos: 92, y_pos: 38 },
-      { id: 'cam-15', camera_id: 'CAM-015', name: 'Floor 2 Elevator Lobby', building: 'Corporate Tower A', floor: 'Floor 2', room: 'Lift Lobby', status: 'Online', connection_status: 'Connected', brand: 'Generic RTSP', stream_type: 'RTSP', stream_url: 'rtsp://admin:pass@192.168.1.115:554/live', is_real_camera: true, last_connected_at: '2025-08-24 09:30:00 AM', fps: 30, resolution: '1080p Full HD', latency_ms: 16, ai_models: ['YOLOv8n', 'ByteTrack'], fov_angle: 90, x_pos: 59, y_pos: 92 }
-    ];
-    setCameras(defaultCameras);
+  // --- Building & Blueprint API Actions ---
+
+  const createBuilding = async (data: any): Promise<BuildingProfile> => {
+    const res = await fetch('http://localhost:8000/api/buildings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const bldg = await res.json();
+    setBuildings(prev => [...prev, bldg]);
+    setActiveBuilding(bldg.name);
+    return bldg;
   };
 
-  const triggerUnknownPersonPrompt = () => {
-    const randomTrackId = `TRK-2025-${Math.floor(100000 + Math.random() * 900000)}`;
-    const randomPhoto = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300&h=300&fit=crop&crop=face';
-    setUnknownDetectionData({ trackId: randomTrackId, photoUrl: randomPhoto });
-    setIsEnrollModalOpen(true);
-    playAlertSound('Medium');
+  const deleteBuilding = async (buildingId: string) => {
+    await fetch(`http://localhost:8000/api/buildings/${buildingId}`, { method: 'DELETE' });
+    setBuildings(prev => prev.filter(b => b.id !== buildingId && b.name !== buildingId));
   };
 
-  const enrollPerson = async (formData: any) => {
-    try {
-      const res = await fetch('http://localhost:8000/api/persons/enroll', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-      if (res.ok) {
-        const enrolled = await res.json();
-        setPersons(prev => [enrolled, ...prev]);
-        setSelectedPersonId(enrolled.person_id);
-      }
-    } catch (e) {
-      console.warn('Enrollment error', e);
-    }
+  const addFloor = async (buildingId: string, data: any): Promise<FloorProfile> => {
+    const res = await fetch(`http://localhost:8000/api/buildings/${buildingId}/floors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const fl = await res.json();
+    setBuildings(prev => prev.map(b => b.id === buildingId || b.name === buildingId ? {
+      ...b,
+      floors: [...b.floors, fl],
+      total_floors: b.floors.length + 1
+    } : b));
+    return fl;
   };
 
-  const resolveAlert = async (alertId: string, notes: string) => {
-    try {
-      await fetch(`http://localhost:8000/api/alerts/${alertId}/resolve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes, status: 'Resolved' })
-      });
-    } catch (e) {
-      setAlerts(prev => prev.map(a => a.id === alertId ? { ...a, status: 'Resolved', guard_notes: notes } : a));
-    }
+  const deleteFloor = async (buildingId: string, floorId: string) => {
+    await fetch(`http://localhost:8000/api/buildings/${buildingId}/floors/${floorId}`, { method: 'DELETE' });
+    setBuildings(prev => prev.map(b => b.id === buildingId || b.name === buildingId ? {
+      ...b,
+      floors: b.floors.filter(f => f.id !== floorId && f.floor_name !== floorId)
+    } : b));
   };
 
-  const simulateAlert = async (type: AlertType, roomName: string = 'Server Room') => {
-    try {
-      await fetch('http://localhost:8000/api/alerts/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ alert_type: type, room_name: roomName })
-      });
-    } catch (e) {
-      console.warn('Simulation error', e);
-    }
+  const addRoom = async (data: any): Promise<RoomZone> => {
+    const res = await fetch('http://localhost:8000/api/rooms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const rm = await res.json();
+    setRooms(prev => [...prev, rm]);
+    return rm;
+  };
+
+  const deleteRoom = async (roomId: string) => {
+    await fetch(`http://localhost:8000/api/rooms/${roomId}`, { method: 'DELETE' });
+    setRooms(prev => prev.filter(r => r.id !== roomId && r.name !== roomId));
+  };
+
+  const uploadBlueprint = async (file: File, buildingId: string, floorId: string): Promise<any> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('building_id', buildingId);
+    formData.append('floor_id', floorId);
+
+    const res = await fetch('http://localhost:8000/api/blueprint/upload', {
+      method: 'POST',
+      body: formData
+    });
+    return await res.json();
+  };
+
+  const saveBlueprint = async (payload: any): Promise<FloorProfile> => {
+    const res = await fetch('http://localhost:8000/api/blueprint/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const saved = await res.json();
+    return saved;
   };
 
   // --- Real Camera Actions ---
@@ -287,7 +314,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
       });
       return await res.json();
     } catch (e) {
-      return { success: false, message: 'Backend unreachable. Check server connection.' };
+      return { success: false, message: 'Backend unreachable.' };
     }
   };
 
@@ -297,7 +324,6 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    if (!res.ok) throw new Error('Failed to connect camera');
     const newCam: Camera = await res.json();
     setCameras(prev => {
       const idx = prev.findIndex(c => c.camera_id === newCam.camera_id);
@@ -313,53 +339,64 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const disconnectCamera = async (cameraId: string) => {
-    try {
-      const res = await fetch(`http://localhost:8000/api/cameras/${cameraId}/disconnect`, {
-        method: 'POST'
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        setCameras(prev => prev.map(c => c.camera_id === cameraId ? updated : c));
-      }
-    } catch (e) {
-      setCameras(prev => prev.map(c => c.camera_id === cameraId ? { ...c, connection_status: 'Disconnected', status: 'Offline' } : c));
+    const res = await fetch(`http://localhost:8000/api/cameras/${cameraId}/disconnect`, { method: 'POST' });
+    if (res.ok) {
+      const updated = await res.json();
+      setCameras(prev => prev.map(c => c.camera_id === cameraId ? updated : c));
     }
   };
 
   const reconnectCamera = async (cameraId: string) => {
-    try {
-      const res = await fetch(`http://localhost:8000/api/cameras/${cameraId}/reconnect`, {
-        method: 'POST'
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        setCameras(prev => prev.map(c => c.camera_id === cameraId ? updated : c));
-      }
-    } catch (e) {
-      setCameras(prev => prev.map(c => c.camera_id === cameraId ? { ...c, connection_status: 'Connected', status: 'Online' } : c));
+    const res = await fetch(`http://localhost:8000/api/cameras/${cameraId}/reconnect`, { method: 'POST' });
+    if (res.ok) {
+      const updated = await res.json();
+      setCameras(prev => prev.map(c => c.camera_id === cameraId ? updated : c));
     }
   };
 
   const deleteCamera = async (cameraId: string) => {
-    try {
-      await fetch(`http://localhost:8000/api/cameras/${cameraId}`, {
-        method: 'DELETE'
-      });
-      setCameras(prev => prev.filter(c => c.camera_id !== cameraId));
-      if (selectedCameraId === cameraId) setSelectedCameraId(null);
-    } catch (e) {
-      setCameras(prev => prev.filter(c => c.camera_id !== cameraId));
+    await fetch(`http://localhost:8000/api/cameras/${cameraId}`, { method: 'DELETE' });
+    setCameras(prev => prev.filter(c => c.camera_id !== cameraId));
+  };
+
+  const triggerUnknownPersonPrompt = () => {
+    const randomTrackId = `TRK-2025-${Math.floor(100000 + Math.random() * 900000)}`;
+    const randomPhoto = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300&h=300&fit=crop&crop=face';
+    setUnknownDetectionData({ trackId: randomTrackId, photoUrl: randomPhoto });
+    setIsEnrollModalOpen(true);
+    playAlertSound('Medium');
+  };
+
+  const enrollPerson = async (formData: any) => {
+    const res = await fetch('http://localhost:8000/api/persons/enroll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData)
+    });
+    if (res.ok) {
+      const enrolled = await res.json();
+      setPersons(prev => [enrolled, ...prev]);
     }
   };
 
-  const toggleSound = () => setSoundEnabled(prev => !prev);
-  const toggleLockdown = () => {
-    setIsLockdownMode(prev => {
-      const next = !prev;
-      if (next) playAlertSound('Critical');
-      return next;
+  const resolveAlert = async (alertId: string, notes: string) => {
+    await fetch(`http://localhost:8000/api/alerts/${alertId}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes, status: 'Resolved' })
     });
   };
+
+  const simulateAlert = async (type: AlertType, roomName: string = 'Server Room') => {
+    await fetch('http://localhost:8000/api/alerts/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alert_type: type, room_name: roomName })
+    });
+  };
+
+  const toggleSound = () => setSoundEnabled(prev => !prev);
+  const toggleLockdown = () => setIsLockdownMode(prev => !prev);
 
   const selectedPerson = persons.find(p => p.person_id === selectedPersonId) || persons[0] || null;
   const selectedCamera = cameras.find(c => c.camera_id === selectedCameraId) || cameras[0] || null;
@@ -373,6 +410,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
       cameras,
       alerts,
       rules,
+      buildings,
       selectedPerson,
       selectedPersonId,
       selectedCamera,
@@ -403,7 +441,15 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
       disconnectCamera,
       reconnectCamera,
       deleteCamera,
-      testCameraConnection
+      testCameraConnection,
+      createBuilding,
+      deleteBuilding,
+      addFloor,
+      deleteFloor,
+      addRoom,
+      deleteRoom,
+      uploadBlueprint,
+      saveBlueprint
     }}>
       {children}
     </SecurityContext.Provider>

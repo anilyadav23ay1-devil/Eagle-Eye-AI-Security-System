@@ -3,13 +3,15 @@ import json
 import random
 import time
 from datetime import datetime
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Optional
 from fastapi import WebSocket
 from models.schemas import (
     Person, AppearanceSnapshot, MovementEvent, Camera, 
     RoomZone, SecurityAlert, SecurityRule, PersonEnrollmentRequest,
     BuildingStats, AccessStatus, AlertSeverity, AlertType, AlertStatus, PersonRole,
-    CameraConnectRequest, CameraTestRequest, CameraBrand, StreamType, ConnectionStatus
+    CameraConnectRequest, CameraTestRequest, CameraBrand, StreamType, ConnectionStatus,
+    BuildingProfile, FloorProfile, BuildingCreateRequest, FloorCreateRequest,
+    RoomCreateRequest, BlueprintSaveRequest, CanvasShape, BlueprintType, ShapeType, Point2D
 )
 from services.camera_streamer import camera_streamer
 from seed_data.initial_state import (
@@ -31,10 +33,85 @@ class SimulationEngine:
         self.total_entries: int = 256
         self.total_exits: int = 228
 
+        # Buildings & Floors Profiles
+        self.buildings: List[BuildingProfile] = [
+            BuildingProfile(
+                id="bldg-tower-a",
+                name="Corporate Tower A",
+                code="TWR-A",
+                address="742 Evergreen Business Park, Tech Corridor",
+                total_floors=4,
+                description="Primary Corporate HQ & Core Engineering Facility",
+                floors=[
+                    FloorProfile(
+                        id="fl-a-1",
+                        floor_number=1,
+                        floor_name="Floor 1",
+                        building_id="bldg-tower-a",
+                        blueprint_type=BlueprintType.SVG,
+                        rooms=[],
+                        camera_ids=["CAM-001", "CAM-003", "CAM-007"]
+                    ),
+                    FloorProfile(
+                        id="fl-a-2",
+                        floor_number=2,
+                        floor_name="Floor 2",
+                        building_id="bldg-tower-a",
+                        blueprint_type=BlueprintType.SVG,
+                        rooms=[r.model_copy(deep=True) for r in INITIAL_ROOMS_FLOOR2],
+                        camera_ids=["CAM-014", "CAM-015", "CAM-018", "CAM-019", "CAM-021"]
+                    ),
+                    FloorProfile(
+                        id="fl-a-3",
+                        floor_number=3,
+                        floor_name="Floor 3",
+                        building_id="bldg-tower-a",
+                        blueprint_type=BlueprintType.CUSTOM_DRAWN,
+                        rooms=[],
+                        camera_ids=[]
+                    ),
+                    FloorProfile(
+                        id="fl-a-4",
+                        floor_number=4,
+                        floor_name="Floor 4",
+                        building_id="bldg-tower-a",
+                        blueprint_type=BlueprintType.CUSTOM_DRAWN,
+                        rooms=[],
+                        camera_ids=[]
+                    )
+                ]
+            ),
+            BuildingProfile(
+                id="bldg-tower-b",
+                name="Corporate Tower B",
+                code="TWR-B",
+                address="744 Evergreen Business Park, North Wing",
+                total_floors=3,
+                description="Executive Offices & Operations",
+                floors=[
+                    FloorProfile(
+                        id="fl-b-1",
+                        floor_number=1,
+                        floor_name="Floor 1",
+                        building_id="bldg-tower-b",
+                        blueprint_type=BlueprintType.CUSTOM_DRAWN,
+                        rooms=[]
+                    ),
+                    FloorProfile(
+                        id="fl-b-2",
+                        floor_number=2,
+                        floor_name="Floor 2",
+                        building_id="bldg-tower-b",
+                        blueprint_type=BlueprintType.CUSTOM_DRAWN,
+                        rooms=[]
+                    )
+                ]
+            )
+        ]
+
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.add(websocket)
-        # Send initial full state snapshot
         await websocket.send_json({
             "type": "INITIAL_STATE",
             "data": {
@@ -43,7 +120,8 @@ class SimulationEngine:
                 "rooms": [r.model_dump() for r in self.rooms],
                 "cameras": [c.model_dump() for c in self.cameras],
                 "alerts": [a.model_dump() for a in self.alerts],
-                "rules": [r.model_dump() for r in self.rules]
+                "rules": [r.model_dump() for r in self.rules],
+                "buildings": [b.model_dump() for b in self.buildings]
             }
         })
 
@@ -84,6 +162,131 @@ class SimulationEngine:
             }
         )
 
+    # --- Building, Floor, and Room Management ---
+
+    def add_building(self, req: BuildingCreateRequest) -> BuildingProfile:
+        bldg_id = f"bldg-{len(self.buildings)+1}-{req.code.lower()}"
+        floors = []
+        for f in range(1, req.total_floors + 1):
+            floors.append(FloorProfile(
+                id=f"fl-{bldg_id}-{f}",
+                floor_number=f,
+                floor_name=f"Floor {f}",
+                building_id=bldg_id,
+                blueprint_type=BlueprintType.CUSTOM_DRAWN,
+                rooms=[]
+            ))
+
+        new_bldg = BuildingProfile(
+            id=bldg_id,
+            name=req.name,
+            code=req.code,
+            address=req.address,
+            total_floors=req.total_floors,
+            description=req.description or "",
+            floors=floors
+        )
+        self.buildings.append(new_bldg)
+        return new_bldg
+
+    def delete_building(self, building_id: str):
+        for i, b in enumerate(self.buildings):
+            if b.id == building_id or b.name.lower() == building_id.lower():
+                self.buildings.pop(i)
+                return True
+        raise ValueError("Building not found")
+
+    def add_floor_to_building(self, req: FloorCreateRequest) -> FloorProfile:
+        for b in self.buildings:
+            if b.id == req.building_id or b.name == req.building_id:
+                new_fl = FloorProfile(
+                    id=f"fl-{b.id}-{req.floor_number}-{int(time.time())}",
+                    floor_number=req.floor_number,
+                    floor_name=req.floor_name,
+                    building_id=b.id,
+                    blueprint_url=req.blueprint_url,
+                    blueprint_type=req.blueprint_type or BlueprintType.CUSTOM_DRAWN,
+                    rooms=[]
+                )
+                b.floors.append(new_fl)
+                b.total_floors = len(b.floors)
+                return new_fl
+        raise ValueError("Building not found")
+
+    def delete_floor(self, building_id: str, floor_id: str):
+        for b in self.buildings:
+            if b.id == building_id or b.name == building_id:
+                for i, fl in enumerate(b.floors):
+                    if fl.id == floor_id or fl.floor_name.lower() == floor_id.lower():
+                        b.floors.pop(i)
+                        b.total_floors = len(b.floors)
+                        return True
+        raise ValueError("Floor not found")
+
+    def add_room(self, req: RoomCreateRequest) -> RoomZone:
+        room_id = f"room-{len(self.rooms)+1}-{int(time.time())}"
+        new_room = RoomZone(
+            id=room_id,
+            name=req.name,
+            building=req.building,
+            floor=req.floor,
+            max_capacity=req.max_capacity,
+            current_occupancy=0,
+            is_restricted=req.is_restricted,
+            allowed_roles=req.allowed_roles,
+            occupants=[],
+            x=req.x,
+            y=req.y,
+            width=req.width,
+            height=req.height,
+            shape_type=req.shape_type or ShapeType.RECT,
+            points=req.points or [],
+            color=req.color or ("rgba(239, 68, 68, 0.25)" if req.is_restricted else "rgba(56, 189, 248, 0.15)")
+        )
+        self.rooms.append(new_room)
+
+        # Also add to floor profile
+        for b in self.buildings:
+            if b.name == req.building or b.id == req.building:
+                for fl in b.floors:
+                    if fl.floor_name == req.floor or fl.id == req.floor:
+                        fl.rooms.append(new_room)
+                        break
+
+        return new_room
+
+    def delete_room(self, room_id: str):
+        for i, r in enumerate(self.rooms):
+            if r.id == room_id or r.name == room_id:
+                self.rooms.pop(i)
+                # Remove from building floors
+                for b in self.buildings:
+                    for fl in b.floors:
+                        fl.rooms = [rm for rm in fl.rooms if rm.id != room_id and rm.name != room_id]
+                return True
+        raise ValueError("Room not found")
+
+    def save_floor_blueprint(self, req: BlueprintSaveRequest) -> FloorProfile:
+        for b in self.buildings:
+            if b.id == req.building_id or b.name == req.building_id:
+                for fl in b.floors:
+                    if fl.id == req.floor_id or fl.floor_name == req.floor_id:
+                        if req.blueprint_url:
+                            fl.blueprint_url = req.blueprint_url
+                        if req.blueprint_type:
+                            fl.blueprint_type = req.blueprint_type
+                        if req.shapes:
+                            fl.drawing_shapes = req.shapes
+                        if req.rooms:
+                            fl.rooms = req.rooms
+                            # Sync top-level rooms for Floor 2 if matching
+                            if fl.floor_name == "Floor 2":
+                                self.rooms = [r.model_copy(deep=True) for r in req.rooms]
+                        return fl
+        raise ValueError("Floor not found for blueprint update")
+
+    # --- Person & Camera & Alert Operations ---
+
     def enroll_person(self, req: PersonEnrollmentRequest) -> Person:
         pid_num = len(self.persons) + 10088
         person_id = f"P-{pid_num}"
@@ -119,7 +322,6 @@ class SimulationEngine:
         )
         self.persons[person_id] = new_person
         
-        # Add appearance snapshot
         self.appearances[person_id] = [
             AppearanceSnapshot(
                 id=f"app-{pid_num}-1",
@@ -132,7 +334,6 @@ class SimulationEngine:
             )
         ]
         
-        # Add movement event
         self.timelines[person_id] = [
             MovementEvent(
                 id=f"m-{pid_num}-1",
@@ -191,7 +392,6 @@ class SimulationEngine:
     def add_or_connect_camera(self, req: CameraConnectRequest) -> Camera:
         cam_id = req.camera_id or f"CAM-{len(self.cameras) + 1:03d}"
         
-        # Check if camera already exists
         existing = next((c for c in self.cameras if c.camera_id == cam_id), None)
         if existing:
             existing.name = req.name
@@ -288,29 +488,24 @@ class SimulationEngine:
             await asyncio.sleep(2.0)
             step += 1
             
-            # Subtle random walk / jitter for Rahul Sharma & simulated occupants
             for pid, person in self.persons.items():
                 if pid == "P-10087":
-                    # Meeting Room area (x: 60-90, y: 38-62)
                     dx = random.uniform(-1.5, 1.5)
                     dy = random.uniform(-1.5, 1.5)
                     person.x_pos = max(60.0, min(90.0, person.x_pos + dx))
                     person.y_pos = max(38.0, min(62.0, person.y_pos + dy))
                     person.last_seen_time = datetime.now().strftime("%I:%M:%S %p")
                 elif pid == "P-00182":
-                    # Server room (x: 10-35, y: 62-90)
                     dx = random.uniform(-1.2, 1.2)
                     dy = random.uniform(-1.2, 1.2)
                     person.x_pos = max(10.0, min(35.0, person.x_pos + dx))
                     person.y_pos = max(62.0, min(90.0, person.y_pos + dy))
                 elif pid == "P-00214":
-                    # Office 201 (x: 10-38, y: 10-38)
                     dx = random.uniform(-1.0, 1.0)
                     dy = random.uniform(-1.0, 1.0)
                     person.x_pos = max(10.0, min(38.0, person.x_pos + dx))
                     person.y_pos = max(10.0, min(38.0, person.y_pos + dy))
 
-            # Broadcast real-time position updates
             if self.active_connections:
                 await self.broadcast({
                     "type": "TICK_UPDATE",

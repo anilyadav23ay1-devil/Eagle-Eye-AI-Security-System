@@ -1,8 +1,10 @@
 import asyncio
 import cv2
+import base64
+import os
 from contextlib import asynccontextmanager
 from typing import List, Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Response
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Response, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -10,7 +12,9 @@ from pydantic import BaseModel
 from models.schemas import (
     Person, AppearanceSnapshot, MovementEvent, Camera,
     RoomZone, SecurityAlert, SecurityRule, PersonEnrollmentRequest,
-    BuildingStats, AlertStatus, AlertType, CameraConnectRequest, CameraTestRequest
+    BuildingStats, AlertStatus, AlertType, CameraConnectRequest, CameraTestRequest,
+    BuildingProfile, FloorProfile, BuildingCreateRequest, FloorCreateRequest,
+    RoomCreateRequest, BlueprintSaveRequest
 )
 from services.simulation_engine import engine
 from services.camera_streamer import camera_streamer
@@ -28,8 +32,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Eagle Eye - AI Security & Activity Intelligence Platform API",
-    description="Real-time multi-camera tracking, universal IP camera ingestion, and situational intelligence backend.",
-    version="1.1.0",
+    description="Real-time multi-camera tracking, universal IP camera ingestion, building blueprint designer, and situational intelligence backend.",
+    version="1.2.0",
     lifespan=lifespan
 )
 
@@ -53,20 +57,139 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception:
         engine.disconnect(websocket)
 
-# --- REST Endpoints ---
+# --- General System & Stats Endpoints ---
 
 @app.get("/api/health")
 def health_check():
     return {
         "status": "ok",
         "system": "Eagle Eye Security Platform",
-        "version": "1.1.0",
-        "real_camera_support": ["RTSP", "ONVIF", "HTTP/MJPEG", "USB_Webcam", "Hikvision", "Dahua", "Axis", "CP Plus", "Reolink"]
+        "version": "1.2.0",
+        "features": ["Universal RTSP/ONVIF", "Interactive Blueprint Designer", "Image/PDF Blueprint Upload", "2D Spatial Multi-Floor Tracking"]
     }
 
 @app.get("/api/stats", response_model=BuildingStats)
 def get_building_stats():
     return engine.get_stats()
+
+# --- Building, Floor, and Room Management Endpoints ---
+
+@app.get("/api/buildings", response_model=List[BuildingProfile])
+def list_buildings():
+    return engine.buildings
+
+@app.post("/api/buildings", response_model=BuildingProfile)
+async def create_building(req: BuildingCreateRequest):
+    new_bldg = engine.add_building(req)
+    await engine.broadcast({
+        "type": "BUILDING_CREATED",
+        "data": new_bldg.model_dump()
+    })
+    return new_bldg
+
+@app.delete("/api/buildings/{building_id}")
+async def delete_building(building_id: str):
+    try:
+        engine.delete_building(building_id)
+        await engine.broadcast({
+            "type": "BUILDING_DELETED",
+            "data": {"building_id": building_id}
+        })
+        return {"success": True, "message": f"Building {building_id} deleted"}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Building not found")
+
+@app.post("/api/buildings/{building_id}/floors", response_model=FloorProfile)
+async def add_floor(building_id: str, req: FloorCreateRequest):
+    req.building_id = building_id
+    try:
+        new_floor = engine.add_floor_to_building(req)
+        await engine.broadcast({
+            "type": "FLOOR_ADDED",
+            "data": new_floor.model_dump()
+        })
+        return new_floor
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Building not found")
+
+@app.delete("/api/buildings/{building_id}/floors/{floor_id}")
+async def delete_floor(building_id: str, floor_id: str):
+    try:
+        engine.delete_floor(building_id, floor_id)
+        await engine.broadcast({
+            "type": "FLOOR_DELETED",
+            "data": {"building_id": building_id, "floor_id": floor_id}
+        })
+        return {"success": True, "message": f"Floor {floor_id} deleted"}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Floor or building not found")
+
+@app.post("/api/rooms", response_model=RoomZone)
+async def create_room(req: RoomCreateRequest):
+    new_room = engine.add_room(req)
+    await engine.broadcast({
+        "type": "ROOM_CREATED",
+        "data": new_room.model_dump()
+    })
+    return new_room
+
+@app.delete("/api/rooms/{room_id}")
+async def delete_room(room_id: str):
+    try:
+        engine.delete_room(room_id)
+        await engine.broadcast({
+            "type": "ROOM_DELETED",
+            "data": {"room_id": room_id}
+        })
+        return {"success": True, "message": f"Room {room_id} deleted"}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+@app.post("/api/blueprint/save", response_model=FloorProfile)
+async def save_blueprint(req: BlueprintSaveRequest):
+    try:
+        saved_floor = engine.save_floor_blueprint(req)
+        await engine.broadcast({
+            "type": "BLUEPRINT_SAVED",
+            "data": saved_floor.model_dump()
+        })
+        return saved_floor
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Floor not found")
+
+@app.post("/api/blueprint/upload")
+async def upload_blueprint_file(
+    file: UploadFile = File(...),
+    building_id: str = Form(...),
+    floor_id: str = Form(...)
+):
+    """Upload blueprint image (PNG/JPG/SVG/WebP) or PDF."""
+    contents = await file.read()
+    filename = file.filename or "blueprint"
+    ext = os.path.splitext(filename)[1].lower()
+
+    mime_type = "image/png"
+    if ext in [".jpg", ".jpeg"]:
+        mime_type = "image/jpeg"
+    elif ext == ".svg":
+        mime_type = "image/svg+xml"
+    elif ext == ".pdf":
+        mime_type = "application/pdf"
+    elif ext == ".webp":
+        mime_type = "image/webp"
+
+    # Base64 encode for embedded rendering
+    b64_data = base64.b64encode(contents).decode("utf-8")
+    data_uri = f"data:{mime_type};base64,{b64_data}"
+
+    return {
+        "success": True,
+        "filename": filename,
+        "blueprint_url": data_uri,
+        "file_type": "PDF" if ext == ".pdf" else "Image"
+    }
+
+# --- Persons & Attendance Endpoints ---
 
 @app.get("/api/persons", response_model=List[Person])
 def list_persons(role: Optional[str] = None, status: Optional[str] = None):
@@ -112,13 +235,11 @@ def list_cameras():
 
 @app.post("/api/cameras/test-connection")
 def test_camera_connection(request: CameraTestRequest):
-    """Test connection to a camera IP / RTSP URL / USB device before adding."""
     result = engine.test_camera_connection(request)
     return result
 
 @app.post("/api/cameras/connect", response_model=Camera)
 async def connect_camera(request: CameraConnectRequest):
-    """Register and connect a new or existing real camera (Hikvision, Dahua, Axis, CP Plus, RTSP, USB Webcam)."""
     camera = engine.add_or_connect_camera(request)
     await engine.broadcast({
         "type": "CAMERA_CONNECTED",
@@ -128,7 +249,6 @@ async def connect_camera(request: CameraConnectRequest):
 
 @app.post("/api/cameras/{camera_id}/disconnect", response_model=Camera)
 async def disconnect_camera(camera_id: str):
-    """Disconnect and stop streaming from a camera."""
     try:
         cam = engine.disconnect_camera(camera_id)
         await engine.broadcast({
@@ -141,7 +261,6 @@ async def disconnect_camera(camera_id: str):
 
 @app.post("/api/cameras/{camera_id}/reconnect", response_model=Camera)
 async def reconnect_camera(camera_id: str):
-    """Reconnect a previously disconnected camera."""
     try:
         cam = engine.reconnect_camera(camera_id)
         await engine.broadcast({
@@ -154,7 +273,6 @@ async def reconnect_camera(camera_id: str):
 
 @app.delete("/api/cameras/{camera_id}")
 async def delete_camera(camera_id: str):
-    """Remove a camera node and release its resources."""
     try:
         engine.delete_camera(camera_id)
         await engine.broadcast({
@@ -167,7 +285,6 @@ async def delete_camera(camera_id: str):
 
 @app.get("/api/cameras/{camera_id}/live-feed")
 def get_camera_live_feed(camera_id: str):
-    """Stream live optical video frames in MJPEG multipart format."""
     camera = next((c for c in engine.cameras if c.camera_id == camera_id or c.id == camera_id), None)
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
@@ -179,7 +296,6 @@ def get_camera_live_feed(camera_id: str):
 
 @app.get("/api/cameras/{camera_id}/snapshot")
 def get_camera_snapshot(camera_id: str):
-    """Capture a single JPEG snapshot from camera."""
     camera = next((c for c in engine.cameras if c.camera_id == camera_id or c.id == camera_id), None)
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
