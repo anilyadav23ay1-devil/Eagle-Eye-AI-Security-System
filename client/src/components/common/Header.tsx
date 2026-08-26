@@ -164,7 +164,7 @@ export const Header: React.FC = () => {
 
         {/* Enroll Button */}
         <button
-          onClick={triggerUnknownPersonPrompt}
+          onClick={() => triggerUnknownPersonPrompt()}
           className="px-3 py-1.5 rounded-xl bg-sky-600/90 hover:bg-sky-500 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-md shadow-sky-600/20 transition-all"
         >
           <UserPlus className="w-3.5 h-3.5" />

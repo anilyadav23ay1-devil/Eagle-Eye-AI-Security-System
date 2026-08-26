@@ -83,7 +83,7 @@ export const LiveDashboard: React.FC<LiveDashboardProps> = ({ setActiveTab }) =>
                 <span>Interactive 2D Map</span>
               </button>
               <button
-                onClick={triggerUnknownPersonPrompt}
+                onClick={() => triggerUnknownPersonPrompt()}
                 className="px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 border border-purple-500/30 text-xs font-semibold flex items-center space-x-1.5 transition-all"
               >
                 <UserPlus className="w-3.5 h-3.5" />

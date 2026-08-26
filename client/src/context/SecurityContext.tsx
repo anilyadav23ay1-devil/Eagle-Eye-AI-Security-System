@@ -37,7 +37,7 @@ interface SecurityContextType {
   toggleLockdown: () => void;
   setIsEnrollModalOpen: (open: boolean) => void;
   setIsConnectCamModalOpen: (open: boolean) => void;
-  triggerUnknownPersonPrompt: () => void;
+  triggerUnknownPersonPrompt: (customTrackId?: string, customPhotoUrl?: string) => Promise<void> | void;
   enrollPerson: (data: any) => Promise<Person | null>;
   resolveAlert: (alertId: string, notes: string) => Promise<void>;
   simulateAlert: (type: AlertType, roomName?: string) => Promise<void>;
@@ -412,9 +412,35 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
     setCameras(prev => prev.filter(c => c.camera_id !== cameraId));
   };
 
-  const triggerUnknownPersonPrompt = () => {
+  const triggerUnknownPersonPrompt = async (customTrackId?: string, customPhotoUrl?: string) => {
+    if (customPhotoUrl) {
+      setUnknownDetectionData({ 
+        trackId: customTrackId || `TRK-2025-${Math.floor(100000 + Math.random() * 900000)}`, 
+        photoUrl: customPhotoUrl 
+      });
+      setIsEnrollModalOpen(true);
+      playAlertSound('Medium');
+      return;
+    }
+
+    try {
+      const targetCam = selectedCameraId || 'CAM-021';
+      const res = await fetch(`http://localhost:8000/api/cameras/${targetCam}/capture-person`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.photoUrl) {
+          setUnknownDetectionData({ trackId: data.trackId, photoUrl: data.photoUrl });
+          setIsEnrollModalOpen(true);
+          playAlertSound('Medium');
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Live capture fetch fallback:', e);
+    }
+
     const randomTrackId = `TRK-2025-${Math.floor(100000 + Math.random() * 900000)}`;
-    const randomPhoto = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300&h=300&fit=crop&crop=face';
+    const randomPhoto = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&h=400&fit=crop&crop=face';
     setUnknownDetectionData({ trackId: randomTrackId, photoUrl: randomPhoto });
     setIsEnrollModalOpen(true);
     playAlertSound('Medium');

@@ -40,10 +40,18 @@ export const CameraFeedMatrix: React.FC = () => {
   const handleCaptureAndEnroll = async () => {
     setIsCapturing(true);
     try {
-      // Trigger instant enrollment with photo capture
+      const res = await fetch(`http://localhost:8000/api/cameras/${activeCam.camera_id}/capture-person`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.photoUrl) {
+          triggerUnknownPersonPrompt(data.trackId, data.photoUrl);
+          return;
+        }
+      }
       triggerUnknownPersonPrompt();
     } catch (e) {
-      console.error(e);
+      console.error('Capture error:', e);
+      triggerUnknownPersonPrompt();
     } finally {
       setIsCapturing(false);
     }

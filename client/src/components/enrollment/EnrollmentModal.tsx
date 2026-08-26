@@ -107,26 +107,29 @@ export const EnrollmentModal: React.FC = () => {
           {!generatedPass ? (
             <form onSubmit={handleSubmit} className="space-y-5">
               {/* Photo & Biometric Card */}
-              <div className="p-4 rounded-2xl bg-slate-800/50 border border-slate-700/80 flex items-center space-x-4">
-                <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-purple-500 shadow-md">
+              <div className="p-4 rounded-2xl bg-slate-800/60 border border-purple-500/30 flex items-center space-x-5 shadow-lg">
+                <div className="relative w-28 h-28 rounded-2xl overflow-hidden border-2 border-purple-400/80 shadow-xl bg-slate-950 flex-shrink-0">
                   <img
-                    src={unknownDetectionData?.photoUrl || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop&crop=face'}
-                    alt="Captured face"
+                    src={unknownDetectionData?.photoUrl || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop&crop=face'}
+                    alt="Captured clear portrait"
                     className="w-full h-full object-cover"
                   />
-                  <span className="absolute bottom-0 inset-x-0 bg-purple-600/90 text-[8px] font-mono text-center text-white py-0.5">
-                    AUTO-CROP
+                  <span className="absolute bottom-0 inset-x-0 bg-purple-600/90 backdrop-blur-sm text-[9px] font-mono text-center text-white py-0.5 tracking-wider">
+                    HD PORTRAIT
                   </span>
                 </div>
-                <div className="space-y-1">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800">
+                <div className="space-y-1.5 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-lg bg-purple-950/80 text-purple-300 border border-purple-700/60">
                       {unknownDetectionData?.trackId || 'TRK-2025-000123'}
                     </span>
-                    <span className="text-[10px] text-emerald-400 font-mono">Face Vector Generated (512-D)</span>
+                    <span className="text-[10px] text-emerald-400 font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      512-D ArcFace Biometrics
+                    </span>
                   </div>
-                  <p className="text-xs text-slate-300">
-                    Detected via Optical AI at <strong>CAM-001 Main Entrance</strong>. Assign credentials and clearance zones below.
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Clear optical portrait captured from live hardware feed. Assign official clearance, visitor badge, and security authorization.
                   </p>
                 </div>
               </div>

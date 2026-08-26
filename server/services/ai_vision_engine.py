@@ -8,15 +8,18 @@ from models.schemas import RoomZone, Point2D
 from services.detection_engine import detection_engine
 from services.face_recognition_service import face_service
 
-def frame_crop_to_base64(crop: np.ndarray) -> str:
-    """Converts optical image crop to standard Base64 JPEG Data URL for web display."""
+def frame_crop_to_base64(crop: np.ndarray, target_size: int = 512) -> str:
+    """Converts optical image crop to crystal-clear high-definition Base64 JPEG Data URL."""
     if crop is None or crop.size == 0:
         return ""
     try:
         h, w = crop.shape[:2]
         if w > 0 and h > 0:
-            resized = cv2.resize(crop, (280, 280))
-            ret, buf = cv2.imencode('.jpg', resized, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            # Maintain high resolution with cubic interpolation
+            scale = target_size / max(h, w)
+            new_w, new_h = max(1, int(w * scale)), max(1, int(h * scale))
+            resized = cv2.resize(crop, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+            ret, buf = cv2.imencode('.jpg', resized, [cv2.IMWRITE_JPEG_QUALITY, 95])
             if ret:
                 return "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode('utf-8')
     except Exception:

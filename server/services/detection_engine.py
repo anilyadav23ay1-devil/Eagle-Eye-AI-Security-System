@@ -2,6 +2,30 @@ import cv2
 import numpy as np
 from typing import List, Tuple
 
+def enhance_image_clarity(img: np.ndarray) -> np.ndarray:
+    """Enhances photo clarity, sharpness, and balanced illumination using LAB CLAHE."""
+    if img is None or img.size == 0:
+        return img
+    try:
+        # 1. Convert to LAB color space
+        lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        
+        # 2. Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) to L-channel
+        clahe = cv2.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8))
+        cl = clahe.apply(l)
+        
+        # 3. Merge back and convert to BGR
+        limg = cv2.merge((cl, a, b))
+        enhanced = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
+        
+        # 4. Subtle unsharp mask for crisp facial feature definition
+        gaussian = cv2.GaussianBlur(enhanced, (0, 0), 2.0)
+        sharpened = cv2.addWeighted(enhanced, 1.25, gaussian, -0.25, 0)
+        return sharpened
+    except Exception:
+        return img
+
 class PersonDetectionEngine:
     def __init__(self):
         # Adaptive MOG2 Background Motion & Pedestrian Silhouette Subtractor
@@ -29,12 +53,12 @@ class PersonDetectionEngine:
             if 1500 < area < (w * h * 0.75):
                 x, y, bw, bh = cv2.boundingRect(cnt)
                 aspect_ratio = bh / float(bw)
-                # Human standing/walking aspect ratio >= 0.8 or large body contour
+                # Human standing/walking aspect ratio >= 0.75 or large body contour
                 if aspect_ratio >= 0.75 or area > 3500:
-                    x1 = max(0, x - 12)
-                    y1 = max(0, y - 12)
-                    x2 = min(w, x + bw + 12)
-                    y2 = min(h, y + bh + 12)
+                    x1 = max(0, x - 15)
+                    y1 = max(0, y - 15)
+                    x2 = min(w, x + bw + 15)
+                    y2 = min(h, y + bh + 15)
                     conf = min(0.98, max(0.68, area / 14000.0 + 0.62))
                     boxes.append((x1, y1, x2, y2, conf))
 
@@ -76,23 +100,36 @@ class PersonDetectionEngine:
         return [boxes[i] for i in pick]
 
     def extract_crops(self, frame: np.ndarray, bbox: Tuple[int, int, int, int]) -> Tuple[np.ndarray, np.ndarray]:
-        """Extracts (face_headshot_crop, torso_crop) from a detected bounding box."""
+        """
+        Extracts high-clarity, complete face & portrait crops with generous headroom,
+        shoulder margins, and illumination enhancement.
+        """
         h, w = frame.shape[:2]
         x1, y1, x2, y2 = bbox
-        x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(w, x2), min(h, y2)
+        
+        bw = x2 - x1
+        bh = y2 - y1
 
-        person_crop = frame[y1:y2, x1:x2]
-        if person_crop.size == 0:
-            empty = np.zeros((10, 10, 3), dtype=np.uint8)
-            return empty, empty
+        # 1. Complete Head & Shoulder Portrait Framing (Upper 55% with headroom and side margin)
+        hs_top = max(0, y1 - int(bh * 0.15))
+        hs_bottom = min(h, y1 + int(bh * 0.60))
+        hs_left = max(0, x1 - int(bw * 0.18))
+        hs_right = min(w, x2 + int(bw * 0.18))
 
-        bh, bw = person_crop.shape[:2]
-        # Headshot is upper 45%
-        face_crop = person_crop[0:int(bh * 0.45), :] if bh > 40 else person_crop
-        # Torso is 25% to 75%
-        torso_crop = person_crop[int(bh * 0.25):int(bh * 0.75), :] if bh > 40 else person_crop
+        headshot_raw = frame[hs_top:hs_bottom, hs_left:hs_right]
+        if headshot_raw.size == 0 or headshot_raw.shape[0] < 20 or headshot_raw.shape[1] < 20:
+            headshot_raw = frame[y1:y2, x1:x2]
 
-        return face_crop, torso_crop
+        headshot_crop = enhance_image_clarity(headshot_raw)
+
+        # 2. Torso Crop (for clothing analysis)
+        t_top = min(h, y1 + int(bh * 0.25))
+        t_bottom = min(h, y1 + int(bh * 0.78))
+        torso_raw = frame[t_top:t_bottom, x1:x2]
+        if torso_raw.size == 0:
+            torso_raw = headshot_crop
+        torso_crop = enhance_image_clarity(torso_raw)
+
+        return headshot_crop, torso_crop
 
 detection_engine = PersonDetectionEngine()

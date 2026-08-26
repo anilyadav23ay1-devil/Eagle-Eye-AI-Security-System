@@ -116,7 +116,7 @@ export const PersonEnrollmentView: React.FC = () => {
         </div>
 
         <button
-          onClick={triggerUnknownPersonPrompt}
+          onClick={() => triggerUnknownPersonPrompt()}
           className="px-3.5 py-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 border border-purple-500/40 text-xs font-bold flex items-center space-x-1.5 transition-all shadow-sm"
         >
           <Camera className="w-3.5 h-3.5" />
