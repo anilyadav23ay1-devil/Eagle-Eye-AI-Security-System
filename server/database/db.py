@@ -11,6 +11,7 @@ from models.schemas import (
     AlertType, AlertStatus, PersonRole, CameraBrand, StreamType, 
     ConnectionStatus, BlueprintType, ShapeType
 )
+from auth.security import get_password_hash
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "eagle_eye.db")
 
@@ -205,6 +206,52 @@ def init_db():
         )
     ''')
 
+    # 10. Users Table (Authentication & RBAC)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'Guard',
+            full_name TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_at TEXT
+        )
+    ''')
+
+    # 11. Immutable Audit Logs Table (Compliance & Activity Tracking)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            action TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id TEXT,
+            details_json TEXT DEFAULT '{}',
+            timestamp TEXT NOT NULL,
+            ip_address TEXT
+        )
+    ''')
+
+    # Seed Default Users if table is empty
+    cursor.execute("SELECT COUNT(*) as cnt FROM users")
+    user_count = cursor.fetchone()["cnt"]
+    if user_count == 0:
+        now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        admin_hash = get_password_hash("adminPassword123!")
+        guard_hash = get_password_hash("guardPassword123!")
+
+        cursor.execute('''
+            INSERT INTO users (id, username, email, password_hash, role, full_name, is_active, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+        ''', ("usr-admin", "admin", "admin@eagleeye.security", admin_hash, "Admin", "System Security Administrator", now_str))
+
+        cursor.execute('''
+            INSERT INTO users (id, username, email, password_hash, role, full_name, is_active, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+        ''', ("usr-guard", "guard", "guard@eagleeye.security", guard_hash, "Guard", "On-Duty Security Officer", now_str))
+
     conn.commit()
     conn.close()
 
@@ -213,6 +260,83 @@ class DatabaseManager:
     def __init__(self):
         init_db()
 
+    # --- User & Authentication Operations ---
+    def get_user_by_username(self, username: str) -> Optional[dict]:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE username = ? OR email = ?", (username, username))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def get_user_by_id(self, user_id: str) -> Optional[dict]:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def create_user(self, user_data: dict) -> dict:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        user_id = user_data.get("id") or f"usr-{int(time.time())}"
+        now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute('''
+            INSERT INTO users (id, username, email, password_hash, role, full_name, is_active, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            user_id,
+            user_data["username"],
+            user_data["email"],
+            user_data["password_hash"],
+            user_data.get("role", "Guard"),
+            user_data.get("full_name", user_data["username"]),
+            1,
+            now_str
+        ))
+        conn.commit()
+        conn.close()
+        return self.get_user_by_id(user_id) or user_data
+
+    def list_users(self) -> List[dict]:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, username, email, role, full_name, is_active, created_at FROM users ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    # --- Audit Logging Operations ---
+    def log_audit(self, action: str, entity_type: str, entity_id: str = "", user_id: str = "system", details: dict = None, ip_address: str = "127.0.0.1"):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        log_id = f"aud-{int(time.time()*1000)}"
+        timestamp = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+        cursor.execute('''
+            INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, details_json, timestamp, ip_address)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (log_id, user_id, action, entity_type, entity_id, json.dumps(details or {}), timestamp, ip_address))
+        conn.commit()
+        conn.close()
+
+    def get_audit_logs(self, limit: int = 100) -> List[dict]:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ?", (limit,))
+        rows = cursor.fetchall()
+        conn.close()
+        logs = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["details"] = json.loads(d["details_json"] or "{}")
+            except Exception:
+                d["details"] = {}
+            logs.append(d)
+        return logs
+
+    # --- Buildings & Floors ---
     def get_all_buildings(self) -> List[BuildingProfile]:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -244,11 +368,11 @@ class DatabaseManager:
                     building_id=f["building_id"],
                     blueprint_url=f["blueprint_url"],
                     blueprint_type=f["blueprint_type"] or BlueprintType.CUSTOM_DRAWN,
-                    rooms=rooms,
                     drawing_shapes=shapes,
+                    rooms=rooms,
                     camera_ids=cam_ids
                 ))
-
+            
             buildings.append(BuildingProfile(
                 id=b["id"],
                 name=b["name"],
@@ -256,27 +380,29 @@ class DatabaseManager:
                 address=b["address"] or "",
                 total_floors=b["total_floors"],
                 description=b["description"] or "",
-                created_at=b["created_at"] or datetime.now().isoformat(),
-                floors=floors
+                floors=floors,
+                created_at=b["created_at"]
             ))
+            
         conn.close()
         return buildings
 
     def save_building(self, bldg: BuildingProfile):
         conn = get_db_connection()
         cursor = conn.cursor()
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute('''
             INSERT OR REPLACE INTO buildings (id, name, code, address, total_floors, description, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (bldg.id, bldg.name, bldg.code, bldg.address, bldg.total_floors, bldg.description, bldg.created_at))
+        ''', (bldg.id, bldg.name, bldg.code, bldg.address, bldg.total_floors, bldg.description, bldg.created_at or now_str))
 
         for f in bldg.floors:
-            shapes_json = json.dumps([s.model_dump() for s in f.drawing_shapes]) if f.drawing_shapes else "[]"
-            cams_json = json.dumps(f.camera_ids) if f.camera_ids else "[]"
+            shapes_json = json.dumps([s.model_dump() for s in f.drawing_shapes])
+            cam_json = json.dumps(f.camera_ids)
             cursor.execute('''
                 INSERT OR REPLACE INTO floors (id, building_id, floor_number, floor_name, blueprint_url, blueprint_type, drawing_shapes_json, camera_ids_json)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (f.id, bldg.id, f.floor_number, f.floor_name, f.blueprint_url, f.blueprint_type, shapes_json, cams_json))
+            ''', (f.id, bldg.id, f.floor_number, f.floor_name, f.blueprint_url, f.blueprint_type, shapes_json, cam_json))
 
             for r in f.rooms:
                 self._save_room_cursor(cursor, r)
@@ -293,10 +419,9 @@ class DatabaseManager:
         conn.commit()
         conn.close()
 
-    def save_floor_blueprint(self, building_id: str, floor_id: str, blueprint_url: Optional[str], blueprint_type: Optional[str], shapes: List[CanvasShape], rooms: List[RoomZone]):
+    def save_floor_blueprint(self, building_id: str, floor_id: str, blueprint_url: Optional[str], blueprint_type: Optional[BlueprintType], shapes: List[CanvasShape], rooms: List[RoomZone]):
         conn = get_db_connection()
         cursor = conn.cursor()
-
         shapes_json = json.dumps([s.model_dump() for s in shapes])
         
         cursor.execute('''
@@ -313,25 +438,34 @@ class DatabaseManager:
         conn.commit()
         conn.close()
 
+    # --- Rooms ---
     def _save_room_cursor(self, cursor, r: RoomZone):
-        allowed_roles_json = json.dumps(r.allowed_roles)
+        allowed_json = json.dumps(r.allowed_roles)
         occupants_json = json.dumps(r.occupants)
-        points_json = json.dumps([p.model_dump() for p in r.points]) if r.points else "[]"
+        points_json = json.dumps([p.model_dump() for p in r.points])
         cursor.execute('''
-            INSERT OR REPLACE INTO rooms (id, building, floor, name, max_capacity, current_occupancy, is_restricted, allowed_roles_json, occupants_json, x, y, width, height, shape_type, points_json, color)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (r.id, r.building, r.floor, r.name, r.max_capacity, r.current_occupancy, 1 if r.is_restricted else 0, allowed_roles_json, occupants_json, r.x, r.y, r.width, r.height, r.shape_type, points_json, r.color))
+            INSERT OR REPLACE INTO rooms (
+                id, building, floor, name, max_capacity, current_occupancy,
+                is_restricted, allowed_roles_json, occupants_json, x, y, width, height,
+                shape_type, points_json, color
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            r.id, r.building, r.floor, r.name, r.max_capacity, r.current_occupancy,
+            1 if r.is_restricted else 0, allowed_json, occupants_json, r.x, r.y,
+            r.width, r.height, r.shape_type, points_json, r.color
+        ))
 
-    def _row_to_room(self, r) -> RoomZone:
+    def _row_to_room(self, r: sqlite3.Row) -> RoomZone:
         allowed = json.loads(r["allowed_roles_json"] or "[]")
         occupants = json.loads(r["occupants_json"] or "[]")
         points_raw = json.loads(r["points_json"] or "[]")
         points = [Point2D(**p) for p in points_raw]
+
         return RoomZone(
             id=r["id"],
+            name=r["name"],
             building=r["building"],
             floor=r["floor"],
-            name=r["name"],
             max_capacity=r["max_capacity"],
             current_occupancy=r["current_occupancy"],
             is_restricted=bool(r["is_restricted"]),
@@ -369,7 +503,7 @@ class DatabaseManager:
         conn.commit()
         conn.close()
 
-    # Persons & Embeddings
+    # --- Persons & Embeddings ---
     def get_all_persons(self) -> Dict[str, Person]:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -392,28 +526,28 @@ class DatabaseManager:
                 valid_from=r["valid_from"] or "",
                 valid_to=r["valid_to"] or "",
                 allowed_zones=allowed,
-                photo_url=r["photo_url"] or "",
-                today_appearance_url=r["today_appearance_url"] or r["photo_url"] or "",
+                photo_url=r["photo_url"],
+                today_appearance_url=r["today_appearance_url"],
                 status=r["status"] or AccessStatus.AUTHORIZED,
                 notes=r["notes"] or "",
                 current_building=r["current_building"] or "Corporate Tower A",
                 current_floor=r["current_floor"] or "Floor 2",
-                current_room=r["current_room"] or "Meeting Room",
-                current_camera_id=r["current_camera_id"] or "CAM-021",
-                last_seen_time=r["last_seen_time"] or "",
+                current_room=r["current_room"] or "Main Entrance",
+                current_camera_id=r["current_camera_id"] or "CAM-001",
+                last_seen_time=r["last_seen_time"] or datetime.now().strftime("%I:%M %p"),
                 x_pos=r["x_pos"] or 50.0,
                 y_pos=r["y_pos"] or 50.0,
-                created_at=r["created_at"] or datetime.now().isoformat()
+                created_at=r["created_at"]
             )
             persons[p.person_id] = p
         conn.close()
         return persons
 
-    def save_person(self, p: Person, embedding: Optional[List[float]] = None):
+    def save_person(self, p: Person):
         conn = get_db_connection()
         cursor = conn.cursor()
         allowed_json = json.dumps(p.allowed_zones)
-        emb_json = json.dumps(embedding) if embedding else "[]"
+        emb_json = json.dumps(p.face_embedding or [])
         cursor.execute('''
             INSERT OR REPLACE INTO persons (
                 id, person_id, track_id, name, mobile, email, id_proof_type, id_proof_number,
@@ -430,7 +564,7 @@ class DatabaseManager:
         conn.commit()
         conn.close()
 
-    # Cameras
+    # --- Cameras ---
     def get_all_cameras(self) -> List[Camera]:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -479,8 +613,8 @@ class DatabaseManager:
             INSERT OR REPLACE INTO cameras (
                 id, camera_id, name, building, floor, room, status, connection_status,
                 brand, stream_type, stream_url, ip_address, port, username, password,
-                channel, device_index, is_real_camera, last_connected_at, fps,
-                resolution, latency_ms, ai_models_json, fov_angle, x_pos, y_pos
+                channel, device_index, is_real_camera, last_connected_at, fps, resolution,
+                latency_ms, ai_models_json, fov_angle, x_pos, y_pos
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             c.id, c.camera_id, c.name, c.building, c.floor, c.room, c.status, c.connection_status,
@@ -494,11 +628,11 @@ class DatabaseManager:
     def delete_camera(self, camera_id: str):
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM cameras WHERE camera_id = ? OR id = ?", (camera_id, camera_id))
+        cursor.execute("DELETE FROM cameras WHERE id = ? OR camera_id = ?", (camera_id, camera_id))
         conn.commit()
         conn.close()
 
-    # Alerts & Rules
+    # --- Alerts & Rules ---
     def get_all_alerts(self) -> List[SecurityAlert]:
         conn = get_db_connection()
         cursor = conn.cursor()

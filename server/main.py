@@ -4,11 +4,16 @@ import base64
 import os
 from contextlib import asynccontextmanager
 from typing import List, Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Response, UploadFile, File, Form
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Response, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from config import settings
+from database.db import db_manager
+from auth.auth_routes import auth_router
+from services.media_storage import media_storage
 from models.schemas import (
     Person, AppearanceSnapshot, MovementEvent, Camera,
     RoomZone, SecurityAlert, SecurityRule, PersonEnrollmentRequest,
@@ -32,8 +37,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Eagle Eye - AI Security & Activity Intelligence Platform API",
-    description="Real-time multi-camera tracking, universal IP camera ingestion, building blueprint designer, and situational intelligence backend.",
-    version="1.2.0",
+    description="Production-grade AI computer vision surveillance, multi-floor spatial tracking, and enterprise security command backend.",
+    version="2.0.0",
     lifespan=lifespan
 )
 
@@ -44,6 +49,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include Authentication & RBAC Router
+app.include_router(auth_router)
+
+# Mount Static Files for Media Storage
+app.mount("/media", StaticFiles(directory=str(settings.MEDIA_DIR)), name="media")
 
 # --- WebSocket Hub ---
 @app.websocket("/ws")
@@ -64,15 +75,23 @@ def health_check():
     return {
         "status": "ok",
         "system": "Eagle Eye Security Platform",
-        "version": "1.2.0",
-        "features": ["Universal RTSP/ONVIF", "Interactive Blueprint Designer", "Image/PDF Blueprint Upload", "2D Spatial Multi-Floor Tracking"]
+        "version": "2.0.0",
+        "database": "SQLite / PostgreSQL Dual-Engine Synced",
+        "storage": settings.STORAGE_BACKEND,
+        "features": [
+            "Universal RTSP/ONVIF Ingestion",
+            "Real AI Centroid Silhouette Tracking",
+            "Interactive CAD Blueprint Studio",
+            "Auto Face Capture & Visitor Badge Clearance",
+            "JWT Authentication & Audit Logging"
+        ]
     }
 
 @app.get("/api/stats", response_model=BuildingStats)
-def get_building_stats():
+def get_stats():
     return engine.get_stats()
 
-# --- Building, Floor, and Room Management Endpoints ---
+# --- Building, Floor & Blueprint Management ---
 
 @app.get("/api/buildings", response_model=List[BuildingProfile])
 def list_buildings():
@@ -81,6 +100,7 @@ def list_buildings():
 @app.post("/api/buildings", response_model=BuildingProfile)
 async def create_building(req: BuildingCreateRequest):
     new_bldg = engine.add_building(req)
+    db_manager.log_audit(action="BUILDING_CREATED", entity_type="BUILDING", entity_id=new_bldg.id, details={"name": new_bldg.name})
     await engine.broadcast({
         "type": "BUILDING_CREATED",
         "data": new_bldg.model_dump()
@@ -91,6 +111,7 @@ async def create_building(req: BuildingCreateRequest):
 async def delete_building(building_id: str):
     try:
         engine.delete_building(building_id)
+        db_manager.log_audit(action="BUILDING_DELETED", entity_type="BUILDING", entity_id=building_id)
         await engine.broadcast({
             "type": "BUILDING_DELETED",
             "data": {"building_id": building_id}
@@ -149,6 +170,7 @@ async def delete_room(room_id: str):
 async def save_blueprint(req: BlueprintSaveRequest):
     try:
         saved_floor = engine.save_floor_blueprint(req)
+        db_manager.log_audit(action="BLUEPRINT_SAVED", entity_type="FLOOR", entity_id=req.floor_id, details={"building": req.building_id})
         await engine.broadcast({
             "type": "BLUEPRINT_SAVED",
             "data": saved_floor.model_dump()
@@ -178,7 +200,10 @@ async def upload_blueprint_file(
     elif ext == ".webp":
         mime_type = "image/webp"
 
-    # Base64 encode for embedded rendering
+    # Save to media storage vault
+    permanent_url = media_storage.save_blueprint_file(contents, building_id, floor_id, ext)
+
+    # Base64 encode for instant client rendering
     b64_data = base64.b64encode(contents).decode("utf-8")
     data_uri = f"data:{mime_type};base64,{b64_data}"
 
@@ -186,6 +211,7 @@ async def upload_blueprint_file(
         "success": True,
         "filename": filename,
         "blueprint_url": data_uri,
+        "storage_url": permanent_url,
         "file_type": "PDF" if ext == ".pdf" else "Image"
     }
 
@@ -209,6 +235,12 @@ def get_person(person_id: str):
 @app.post("/api/persons/enroll", response_model=Person)
 async def enroll_person(request: PersonEnrollmentRequest):
     new_person = engine.enroll_person(request)
+    db_manager.log_audit(
+        action="PERSON_ENROLLED",
+        entity_type="PERSON",
+        entity_id=new_person.person_id,
+        details={"name": new_person.name, "role": new_person.role}
+    )
     await engine.broadcast({
         "type": "NEW_PERSON_ENROLLED",
         "data": new_person.model_dump()
@@ -227,20 +259,26 @@ def get_person_timeline(person_id: str):
         return engine.timelines[person_id]
     return []
 
-# --- Real Camera Connection & Stream Management ---
+# --- Camera & Universal Ingestion Endpoints ---
 
 @app.get("/api/cameras", response_model=List[Camera])
 def list_cameras():
     return engine.cameras
 
-@app.post("/api/cameras/test-connection")
-def test_camera_connection(request: CameraTestRequest):
+@app.post("/api/cameras/test")
+def test_camera_stream(request: CameraTestRequest):
     result = engine.test_camera_connection(request)
     return result
 
 @app.post("/api/cameras/connect", response_model=Camera)
 async def connect_camera(request: CameraConnectRequest):
     camera = engine.add_or_connect_camera(request)
+    db_manager.log_audit(
+        action="CAMERA_CONNECTED",
+        entity_type="CAMERA",
+        entity_id=camera.camera_id,
+        details={"name": camera.name, "brand": camera.brand}
+    )
     await engine.broadcast({
         "type": "CAMERA_CONNECTED",
         "data": camera.model_dump()
@@ -322,6 +360,12 @@ class AlertResolveRequest(BaseModel):
 async def resolve_alert(alert_id: str, req: AlertResolveRequest):
     try:
         resolved = engine.resolve_alert(alert_id, req.notes, req.status)
+        db_manager.log_audit(
+            action="ALERT_RESOLVED",
+            entity_type="ALERT",
+            entity_id=alert_id,
+            details={"notes": req.notes}
+        )
         await engine.broadcast({
             "type": "ALERT_RESOLVED",
             "data": resolved.model_dump()
@@ -331,54 +375,49 @@ async def resolve_alert(alert_id: str, req: AlertResolveRequest):
         raise HTTPException(status_code=404, detail="Alert not found")
 
 class SimulateAlertRequest(BaseModel):
-    alert_type: AlertType
-    room_name: str = "Server Room"
+    type: AlertType
+    room: Optional[str] = "Server Room"
 
 @app.post("/api/alerts/simulate", response_model=SecurityAlert)
 async def trigger_simulated_alert(req: SimulateAlertRequest):
-    alert = engine.trigger_simulated_alert(req.alert_type, req.room_name)
+    new_alert = engine.trigger_simulated_alert(req.type, req.room or "Server Room")
     await engine.broadcast({
         "type": "NEW_ALERT",
-        "data": alert.model_dump()
+        "data": new_alert.model_dump()
     })
-    return alert
+    return new_alert
 
 @app.get("/api/rules", response_model=List[SecurityRule])
 def list_rules():
     return engine.rules
 
+@app.post("/api/rules", response_model=SecurityRule)
+def create_rule(rule: SecurityRule):
+    engine.rules.append(rule)
+    db_manager.save_rule(rule)
+    return rule
+
 @app.get("/api/reports/analytics")
 def get_analytics_report():
     return {
-        "hourly_traffic": [
-            {"hour": "06:00", "entries": 5, "exits": 1},
-            {"hour": "07:00", "entries": 18, "exits": 2},
-            {"hour": "08:00", "entries": 65, "exits": 8},
-            {"hour": "09:00", "entries": 112, "exits": 14},
-            {"hour": "10:00", "entries": 42, "exits": 22},
-            {"hour": "11:00", "entries": 14, "exits": 31},
+        "daily_occupancy": [
+            {"hour": "06:00 AM", "count": 6},
+            {"hour": "07:00 AM", "count": 20},
+            {"hour": "08:00 AM", "count": 73},
+            {"hour": "09:00 AM", "count": 126},
+            {"hour": "10:00 AM", "count": 64},
+            {"hour": "11:00 AM", "count": 45},
+            {"hour": "12:00 PM", "count": 88},
+            {"hour": "01:00 PM", "count": 95},
+            {"hour": "02:00 PM", "count": 52},
+            {"hour": "03:00 PM", "count": 40},
+            {"hour": "04:00 PM", "count": 32},
+            {"hour": "05:00 PM", "count": 110},
         ],
-        "incidents_by_severity": {
-            "Critical": 1,
-            "High": 2,
-            "Medium": 1,
-            "Low": 0
-        },
-        "zone_utilization": [
-            {"zone": "Meeting Room", "utilization_pct": 85, "avg_dwell_mins": 45},
-            {"zone": "Office 201", "utilization_pct": 70, "avg_dwell_mins": 120},
-            {"zone": "Office 202", "utilization_pct": 50, "avg_dwell_mins": 95},
-            {"zone": "Server Room", "utilization_pct": 25, "avg_dwell_mins": 15},
-            {"zone": "Pantry", "utilization_pct": 40, "avg_dwell_mins": 10},
-        ],
-        "estimated_roi": {
-            "incident_reduction": "30-50%",
-            "operational_savings": "25-40%",
-            "compliance_readiness": "100%",
-            "payback_months": "6-12 Months"
+        "roi_metrics": {
+            "incidents_prevented_pct": "30-50%",
+            "cost_reduction_pct": "25-40%",
+            "audit_compliance_readiness": "100%",
+            "typical_payback_months": "6-12 Months"
         }
     }
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
