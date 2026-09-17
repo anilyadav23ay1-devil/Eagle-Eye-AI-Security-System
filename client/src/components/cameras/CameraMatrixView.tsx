@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useSecurity } from '../../context/SecurityContext';
 import { Camera } from '../../types';
+import { getCameraLiveStreamUrl } from '../../config/api';
 
 export const CameraMatrixView: React.FC = () => {
   const { 
@@ -165,7 +166,7 @@ export const CameraMatrixView: React.FC = () => {
               <div className="relative aspect-video rounded-xl bg-slate-950 border border-slate-800 overflow-hidden group">
                 {isConnected ? (
                   <img
-                    src={`http://localhost:8000/api/cameras/${cam.camera_id}/live-feed`}
+                    src={getCameraLiveStreamUrl(cam.camera_id)}
                     alt={cam.name}
                     className="w-full h-full object-cover"
                     onError={(e) => {

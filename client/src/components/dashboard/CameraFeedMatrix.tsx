@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Camera, Maximize2, Radio, Video, Layers, Crosshair, AlertCircle, Eye, RefreshCw, UserPlus, Sparkles } from 'lucide-react';
 import { useSecurity } from '../../context/SecurityContext';
+import { getCameraLiveStreamUrl, getCameraCaptureUrl } from '../../config/api';
 
 export const CameraFeedMatrix: React.FC = () => {
   const { 
@@ -40,7 +41,7 @@ export const CameraFeedMatrix: React.FC = () => {
   const handleCaptureAndEnroll = async () => {
     setIsCapturing(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/cameras/${activeCam.camera_id}/capture-person`);
+      const res = await fetch(getCameraCaptureUrl(activeCam.camera_id));
       if (res.ok) {
         const data = await res.json();
         if (data.photoUrl) {
@@ -57,7 +58,8 @@ export const CameraFeedMatrix: React.FC = () => {
     }
   };
 
-  const liveStreamUrl = `http://localhost:8000/api/cameras/${activeCam.camera_id}/live-feed?t=${imgKey}`;
+  const liveStreamUrl = getCameraLiveStreamUrl(activeCam.camera_id, imgKey);
+
 
   return (
     <div className="glass-panel rounded-2xl p-4 border border-slate-800 space-y-3 shadow-2xl">

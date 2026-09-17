@@ -5,6 +5,7 @@ import {
   AlertSeverity, AlertType, AlertStatus, CameraConnectPayload, CameraTestPayload,
   CameraBrand, StreamType, ConnectionStatus, BuildingProfile, FloorProfile, CanvasShape, BlueprintType
 } from '../types';
+import { getApiBase, getWsUrl, getCameraCaptureUrl } from '../config/api';
 
 interface SecurityContextType {
   stats: BuildingStats;
@@ -147,7 +148,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     const connectWs = () => {
       try {
-        socket = new WebSocket('ws://localhost:8000/ws');
+        socket = new WebSocket(getWsUrl());
         wsRef.current = socket;
 
         socket.onopen = () => {
@@ -216,22 +217,23 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     connectWs();
 
-    fetch('http://localhost:8000/api/buildings')
+    const api = getApiBase();
+    fetch(`${api}/api/buildings`)
       .then(r => r.json())
       .then(b => setBuildings(b))
       .catch(() => {});
 
-    fetch('http://localhost:8000/api/cameras')
+    fetch(`${api}/api/cameras`)
       .then(r => r.json())
       .then(cams => setCameras(cams))
       .catch(() => {});
 
-    fetch('http://localhost:8000/api/rooms')
+    fetch(`${api}/api/rooms`)
       .then(r => r.json())
       .then(rms => setRooms(rms))
       .catch(() => {});
 
-    fetch('http://localhost:8000/api/stats')
+    fetch(`${api}/api/stats`)
       .then(r => r.json())
       .then(st => setStats(st))
       .catch(() => {});
@@ -244,7 +246,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   // --- Building & Blueprint API Actions (Strict Deduplication) ---
 
   const createBuilding = async (data: any): Promise<BuildingProfile> => {
-    const res = await fetch('http://localhost:8000/api/buildings', {
+    const res = await fetch(`${getApiBase()}/api/buildings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -256,12 +258,12 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const deleteBuilding = async (buildingId: string) => {
-    await fetch(`http://localhost:8000/api/buildings/${buildingId}`, { method: 'DELETE' });
+    await fetch(`${getApiBase()}/api/buildings/${buildingId}`, { method: 'DELETE' });
     setBuildings(prev => prev.filter(b => b.id !== buildingId && b.name !== buildingId));
   };
 
   const addFloor = async (buildingId: string, data: any): Promise<FloorProfile> => {
-    const res = await fetch(`http://localhost:8000/api/buildings/${buildingId}/floors`, {
+    const res = await fetch(`${getApiBase()}/api/buildings/${buildingId}/floors`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -276,7 +278,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const deleteFloor = async (buildingId: string, floorId: string) => {
-    await fetch(`http://localhost:8000/api/buildings/${buildingId}/floors/${floorId}`, { method: 'DELETE' });
+    await fetch(`${getApiBase()}/api/buildings/${buildingId}/floors/${floorId}`, { method: 'DELETE' });
     setBuildings(prev => prev.map(b => (b.id === buildingId || b.name === buildingId) ? {
       ...b,
       floors: b.floors.filter(f => f.id !== floorId && f.floor_name !== floorId)
@@ -284,7 +286,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const addRoom = async (data: any): Promise<RoomZone> => {
-    const res = await fetch('http://localhost:8000/api/rooms', {
+    const res = await fetch(`${getApiBase()}/api/rooms`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -295,7 +297,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const deleteRoom = async (roomId: string) => {
-    await fetch(`http://localhost:8000/api/rooms/${roomId}`, { method: 'DELETE' });
+    await fetch(`${getApiBase()}/api/rooms/${roomId}`, { method: 'DELETE' });
     setRooms(prev => prev.filter(r => r.id !== roomId && r.name !== roomId));
   };
 
@@ -305,7 +307,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
     formData.append('building_id', buildingId);
     formData.append('floor_id', floorId);
 
-    const res = await fetch('http://localhost:8000/api/blueprint/upload', {
+    const res = await fetch(`${getApiBase()}/api/blueprint/upload`, {
       method: 'POST',
       body: formData
     });
@@ -313,7 +315,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const saveBlueprint = async (payload: any): Promise<FloorProfile> => {
-    const res = await fetch('http://localhost:8000/api/blueprint/save', {
+    const res = await fetch(`${getApiBase()}/api/blueprint/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -326,7 +328,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const testCameraConnection = async (payload: CameraTestPayload) => {
     try {
-      const res = await fetch('http://localhost:8000/api/cameras/test-connection', {
+      const res = await fetch(`${getApiBase()}/api/cameras/test-connection`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -338,7 +340,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const connectCamera = async (payload: CameraConnectPayload): Promise<Camera> => {
-    const res = await fetch('http://localhost:8000/api/cameras/connect', {
+    const res = await fetch(`${getApiBase()}/api/cameras/connect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -392,7 +394,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const disconnectCamera = async (cameraId: string) => {
-    const res = await fetch(`http://localhost:8000/api/cameras/${cameraId}/disconnect`, { method: 'POST' });
+    const res = await fetch(`${getApiBase()}/api/cameras/${cameraId}/disconnect`, { method: 'POST' });
     if (res.ok) {
       const updated = await res.json();
       setCameras(prev => prev.map(c => c.camera_id === cameraId ? updated : c));
@@ -400,7 +402,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const reconnectCamera = async (cameraId: string) => {
-    const res = await fetch(`http://localhost:8000/api/cameras/${cameraId}/reconnect`, { method: 'POST' });
+    const res = await fetch(`${getApiBase()}/api/cameras/${cameraId}/reconnect`, { method: 'POST' });
     if (res.ok) {
       const updated = await res.json();
       setCameras(prev => prev.map(c => c.camera_id === cameraId ? updated : c));
@@ -408,7 +410,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const deleteCamera = async (cameraId: string) => {
-    await fetch(`http://localhost:8000/api/cameras/${cameraId}`, { method: 'DELETE' });
+    await fetch(`${getApiBase()}/api/cameras/${cameraId}`, { method: 'DELETE' });
     setCameras(prev => prev.filter(c => c.camera_id !== cameraId));
   };
 
@@ -425,7 +427,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     try {
       const targetCam = selectedCameraId || 'CAM-021';
-      const res = await fetch(`http://localhost:8000/api/cameras/${targetCam}/capture-person`);
+      const res = await fetch(`${getApiBase()}/api/cameras/${targetCam}/capture-person`);
       if (res.ok) {
         const data = await res.json();
         if (data.photoUrl) {
@@ -447,7 +449,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const enrollPerson = async (formData: any): Promise<Person | null> => {
-    const res = await fetch('http://localhost:8000/api/persons/enroll', {
+    const res = await fetch(`${getApiBase()}/api/persons/enroll`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData)
@@ -461,7 +463,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const resolveAlert = async (alertId: string, notes: string) => {
-    const res = await fetch(`http://localhost:8000/api/alerts/${alertId}/resolve`, {
+    const res = await fetch(`${getApiBase()}/api/alerts/${alertId}/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ notes, status: 'Resolved' })
@@ -473,7 +475,7 @@ export const SecurityProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const simulateAlert = async (type: AlertType, roomName: string = 'Server Room') => {
-    const res = await fetch('http://localhost:8000/api/alerts/simulate', {
+    const res = await fetch(`${getApiBase()}/api/alerts/simulate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ alert_type: type, room_name: roomName })

@@ -53,3 +53,8 @@ ENV/
 *.db
 *.sqlite3
 server/data/
+
+# Binaries & Tooling
+tools/
+*.exe
+
