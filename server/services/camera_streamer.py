@@ -221,7 +221,7 @@ class CameraStreamManager:
         cv2.rectangle(frame, (15, 15), (w - 15, 55), (15, 23, 42), -1)
         cv2.rectangle(frame, (15, 15), (w - 15, 55), (51, 65, 85), 1)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cv2.putText(frame, f"EAGLE EYE AI NODE | {camera_id} - {camera_name}", (25, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (56, 189, 248), 1)
+        cv2.putText(frame, f"EAGLE EYE SMART CLASS | {camera_id} - {camera_name}", (25, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (56, 189, 248), 1)
         cv2.putText(frame, f"BRAND: {brand} | {now_str} | REC", (w - 380, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (16, 185, 129), 1)
 
         return frame

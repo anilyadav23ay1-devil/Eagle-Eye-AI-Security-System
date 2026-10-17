@@ -1,7 +1,8 @@
 {
-  "name": "client",
+  "name": "eagle-eye-smart-class-attendance-activity-intelligence",
+  "version": "2.0.0",
+  "description": "Eagle Eye - Smart Class Attendance & Activity Intelligence",
   "private": true,
-  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

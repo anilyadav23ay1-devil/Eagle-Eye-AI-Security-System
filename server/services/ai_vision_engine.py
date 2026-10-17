@@ -288,7 +288,7 @@ class AIVisionEngine:
             cv2.putText(frame, bottom_text, (x1 + 4, y2 + 13), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (56, 189, 248), 1)
 
         # AI Watermark
-        cv2.putText(frame, f"EAGLE EYE AI CORE 2.0 :: {len(detections)} TARGETS ACTIVE", (15, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 200), 1)
+        cv2.putText(frame, f"EAGLE EYE SMART CLASS AI :: {len(detections)} STUDENTS ACTIVE", (15, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 200), 1)
         return frame
 
 ai_vision_engine = AIVisionEngine()

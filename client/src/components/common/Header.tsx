@@ -58,10 +58,10 @@ export const Header: React.FC = () => {
           <div>
             <div className="flex items-center space-x-1.5">
               <h1 className="font-extrabold text-base tracking-wider text-white flex items-center gap-1.5">
-                EAGLE EYE <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-mono font-normal">REAL AI CORE</span>
+                EAGLE EYE <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-mono font-normal">SMART CLASS AI</span>
               </h1>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium tracking-wide">AI Security & Activity Intelligence Platform</p>
+            <p className="text-[11px] text-slate-400 font-medium tracking-wide">Smart Class Attendance & Activity Intelligence</p>
           </div>
         </div>
 

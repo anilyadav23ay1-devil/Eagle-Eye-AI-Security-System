@@ -165,7 +165,7 @@ export const RoomDetailsDrawer: React.FC<RoomDetailsDrawerProps> = ({
 
       {/* Footer Info */}
       <div className="pt-4 border-t border-slate-800 text-[11px] text-slate-500 font-mono text-center">
-        Eagle Eye Spatial Engine • Auto-Refreshed
+        Eagle Eye Smart Class Attendance & Spatial Engine • Auto-Refreshed
       </div>
     </div>
   );

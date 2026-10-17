@@ -1,4 +1,4 @@
-// Centralized API and WebSocket URL configuration for Eagle Eye AI Security Platform
+// Centralized API and WebSocket URL configuration for Eagle Eye - Smart Class Attendance & Activity Intelligence
 // Works seamlessly on localhost, Local Area Network (Wi-Fi), and public internet tunnels.
 
 export const getApiBase = (): string => {

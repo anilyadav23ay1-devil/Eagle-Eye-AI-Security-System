@@ -38,7 +38,7 @@ export const AnalyticsDashboard: React.FC = () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `eagle_eye_audit_compliance_report_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute("download", `eagle_eye_smart_class_attendance_audit_report_${new Date().toISOString().slice(0,10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

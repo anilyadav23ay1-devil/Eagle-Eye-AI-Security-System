@@ -38,8 +38,8 @@ async def lifespan(app: FastAPI):
     sim_task.cancel()
 
 app = FastAPI(
-    title="Eagle Eye - AI Security & Activity Intelligence Platform API",
-    description="Production-grade AI computer vision surveillance, multi-floor spatial tracking, and enterprise security command backend.",
+    title="Eagle Eye - Smart Class Attendance & Activity Intelligence API",
+    description="Production-grade AI computer vision classroom attendance tracking, student activity intelligence, multi-camera spatial monitoring, and automated attendance reporting backend.",
     version="2.0.0",
     lifespan=lifespan
 )
@@ -76,7 +76,7 @@ async def websocket_endpoint(websocket: WebSocket):
 def health_check():
     return {
         "status": "ok",
-        "system": "Eagle Eye Security Platform",
+        "system": "Eagle Eye - Smart Class Attendance & Activity Intelligence",
         "version": "2.0.0",
         "database": "SQLite / PostgreSQL Dual-Engine Synced",
         "storage": settings.STORAGE_BACKEND,

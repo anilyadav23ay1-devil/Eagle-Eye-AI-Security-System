@@ -1,6 +1,6 @@
-# Eagle Eye AI Security Platform - Online Launcher
+# Eagle Eye - Smart Class Attendance & Activity Intelligence - Online Launcher
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "  EAGLE EYE AI SECURITY & SURVEILLANCE PLATFORM ONLINE" -ForegroundColor Cyan
+Write-Host "  EAGLE EYE - SMART CLASS ATTENDANCE & ACTIVITY INTELLIGENCE" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 # 1. Start FastAPI Backend
@@ -24,7 +24,7 @@ if (Test-Path ".\tools\cloudflared.exe") {
 }
 
 Write-Host ""
-Write-Host "Eagle Eye AI is now ONLINE!" -ForegroundColor Green
+Write-Host "Eagle Eye - Smart Class Attendance & Activity Intelligence is now ONLINE!" -ForegroundColor Green
 Write-Host "- Local URL:    http://localhost:5173" -ForegroundColor White
 Write-Host "- LAN (Wi-Fi):  http://$( (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -match 'Wi-Fi|Wireless|Ethernet' -and $_.IPAddress -notmatch '169\.254\.' } | Select-Object -First 1).IPAddress ):5173" -ForegroundColor White
 Write-Host "- Public Cloudflare / LocalTunnel: Check the opened terminal window for your live HTTPS URL" -ForegroundColor White

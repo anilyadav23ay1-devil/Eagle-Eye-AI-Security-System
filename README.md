@@ -1,12 +1,12 @@
-# Eagle Eye - An AI Security System
-### Smart Building Security & Activity Intelligence Platform
+# Eagle Eye - Smart Class Attendance & Activity Intelligence
+### Smart Classroom Attendance, Activity Intelligence & Spatial Analytics Platform
 
 [![AI Engine](https://img.shields.io/badge/AI%20Vision-YOLOv8%20%7C%20DeepFace%20%7C%20ByteTrack-blue.svg)](#)
 [![Frontend](https://img.shields.io/badge/Frontend-React%2018%20%7C%20Vite%20%7C%20TypeScript%20%7C%20TailwindCSS-sky.svg)](#)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%7C%20WebSockets%20%7C%20Python%203.14-emerald.svg)](#)
-[![License](https://img.shields.io/badge/Security-Enterprise%20Grade%20RBAC-purple.svg)](#)
+[![Attendance Intelligence](https://img.shields.io/badge/Attendance-Real--Time%20Biometric-purple.svg)](#)
 
-Eagle Eye is a fully integrated, AI-powered physical security and situational intelligence platform engineered for corporate towers, research campuses, government facilities, and critical infrastructure. It performs real-time identification, spatial multi-camera person tracking, interactive 2D building map visualization, automated visitor enrollment, daily appearance change auditing, and threat detection.
+**Eagle Eye - Smart Class Attendance & Activity Intelligence** is a fully integrated, AI-powered automated attendance and student activity intelligence platform. Engineered for modern academic institutions, lecture halls, smart classrooms, and university campuses, it performs real-time face verification attendance, spatial multi-camera student tracking, interactive 2D classroom & campus map visualization, automated student/visitor enrollment, attendance auditing, and activity intelligence analytics.
 
 ---
 
@@ -41,11 +41,11 @@ Eagle Eye is a fully integrated, AI-powered physical security and situational in
 
 ## 🚀 Key Modules & Capabilities
 
-### 1. Live Security Command Center Dashboard
-- **Top Metric Cards**: Real-time counter of total people in building, authorized personnel, unverified visitors, active security alerts, and online cameras.
-- **3D Spatial Floor Breakdown**: Real-time occupancy gauges for Floor 1 to Floor 4 with entry and exit volume tallies.
-- **AI Optical Stream Player**: Simulated CCTV matrix with YOLOv8 bounding boxes, confidence percentages, and `Track ID` badges.
-- **Real-Time Alert Ticker**: Categorized threat feed with audio alarms and 1-click mitigation actions (*Acknowledge*, *Dispatch Guard*, *Track on Map*).
+### 1. Live Smart Class Attendance & Activity Dashboard
+- **Top Metric Cards**: Real-time counter of total students in class/facility, verified attendance roster, unverified visitors/guests, active classroom notifications, and online cameras.
+- **3D Spatial Floor & Room Breakdown**: Real-time classroom occupancy gauges with entry and exit volume tallies.
+- **AI Optical Stream Player**: Live classroom camera matrix with YOLOv8 bounding boxes, confidence percentages, and `Track ID` badges.
+- **Real-Time Activity Alert Ticker**: Categorized event and attendance feed with notifications and 1-click mitigation actions (*Acknowledge*, *Verify Student*, *Track on Map*).
 
 ### 2. Interactive 2D Building Map & Floor Navigator
 - **Multi-Building & Multi-Floor Navigation**: Seamless level switching (Basement, Floors 1–4).
@@ -54,39 +54,39 @@ Eagle Eye is a fully integrated, AI-powered physical security and situational in
 - **Camera Locations & FOV Cones**: Interactive camera nodes with Field-of-View cones.
 - **Slide-Over Room Inspection**: Click any zone to view capacity limits, security clearance rules, and live occupant roster.
 
-### 3. New Person Enrollment & First-Time Entry
-- **Automated Trigger**: Detects unknown faces at entry gates (CAM-001/CAM-003) and pops up an instant enrollment modal.
+### 3. Student & Faculty Enrollment & Entry
+- **Automated Trigger**: Detects unregistered faces at classroom/campus entry points and opens instant enrollment.
 - **Biometric Face Capture**: Auto-cropped facial reference vector.
-- **Registration Form**: Full name, mobile, email, ID proof (Aadhaar, Passport, Govt ID), role classification, validity window, and permitted zone selector.
-- **Track ID Generator**: Issues unique tokens (e.g. `P-10087` / `TRK-2025-000123`) and generates a digital visitor pass.
+- **Registration Form**: Full name, student/faculty ID, mobile, email, department, role classification (Student, Professor, Staff, Visitor), and permitted classrooms/labs.
+- **Track ID Generator**: Issues unique tokens (e.g. `STU-10087` / `TRK-2026-000123`) and generates a digital attendance profile.
 
 ### 4. Individual Tracking & Movement Timeline
-- **Person Dossier**: Real-time photo, status badges, and exact current location.
-- **Live Follow Mode**: Tracks an individual dynamically across rooms and cameras.
+- **Student / Staff Dossier**: Real-time photo, attendance status badges, and exact current classroom location.
+- **Live Follow Mode**: Tracks an individual dynamically across lecture rooms and cameras.
 - **Movement Timeline**: Step-by-step room transition log with exact timestamps, camera IDs, and dwell durations.
-- **Trajectory Breadcrumbs**: Visual walking path overlay on the floorplan.
+- **Trajectory Breadcrumbs**: Visual walking path overlay on the classroom/campus floorplan.
 
 ### 5. Daily Appearance Snapshot & Outfit Vault
 - **Reference Standard vs Today's Capture**: Master ID photo comparison against today's optical capture.
-- **Multi-Day Outfit Gallery**: Historical gallery across past visits (20–24 Aug 2025).
-- **AI Outfit Intelligence**: Automatic flag if an enrolled person undergoes a radical mid-day wardrobe change.
+- **Multi-Day Outfit Gallery**: Historical gallery across past class attendance sessions.
+- **AI Wardrobe Intelligence**: Automatic multi-camera re-identification across diverse attire and lighting conditions.
 
 ### 6. Rules & Threat Mitigation Engine
 - **Configurable Policies**:
-  - Restricted Zone Geofencing (Server Room / Telecom Vault breach alarms).
-  - Turnstile Tailgating & Piggybacking detection (<1.5s multi-entry).
-  - Corridor Loitering detection (>5 mins stationary).
-  - Visitor Badge Expiration enforcement.
-- **1-Click Simulation Triggers**: Test any real-time security alert immediately.
+  - Restricted Zone Geofencing (Lab / Server Room breach alarms).
+  - Proxy Attendance & Tailgating detection (<1.5s multi-entry).
+  - Corridor Loitering detection (>5 mins stationary during class hours).
+  - Student / Visitor Badge Expiration enforcement.
+- **1-Click Simulation Triggers**: Test any real-time smart classroom notification immediately.
 
 ### 7. Camera Matrix & Edge Vision Node
 - Grid of 96 cameras with resolution, FPS, latency, and AI model health.
 - **Live Webcam Mode**: Connects to the local device camera for live demo testing.
 
-### 8. Business ROI & Compliance Analytics
-- Hourly traffic curves and room utilization heatmaps.
-- **Measurable Financial ROI**: Estimated 30-50% incident reduction, 25-40% operational cost savings, and 6-12 month payback.
-- **1-Click Audit Export**: Downloadable CSV audit compliance trail.
+### 8. Institutional Analytics & Attendance ROI
+- Hourly classroom attendance curves and room utilization heatmaps.
+- **Measurable Institutional ROI**: Automated 100% paperless attendance, elimination of proxy attendance, 30-50% administrative time savings, and comprehensive student engagement insights.
+- **1-Click Audit Export**: Downloadable CSV attendance compliance and audit trail.
 
 ---
 

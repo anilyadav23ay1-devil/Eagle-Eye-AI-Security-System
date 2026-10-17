@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 class Settings(BaseSettings):
     # App Settings
-    APP_NAME: str = "Eagle Eye - AI Security Platform"
+    APP_NAME: str = "Eagle Eye - Smart Class Attendance & Activity Intelligence"
     ENVIRONMENT: str = "production"
     DEBUG: bool = False
     
